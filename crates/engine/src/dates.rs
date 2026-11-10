@@ -6,6 +6,10 @@
 //!
 //! Patterns use `util.printd`'s date letters: `yyyy` `yy`, `mmmm` `mmm` `mm` `m`, `dddd` `ddd`
 //! `dd` `d`. `\` shows the next character as is (`d \de mmmm` → `8 de October`).
+//!
+//! Japanese era (和暦) letters, see [`pdfcraft_edit::era`]: `gg` era name (令和), `G` its Latin
+//! initial (R), `E` the year in the era (7), `EE` the same with 元 for year 1. `ggEE年m月d日` →
+//! `令和7年11月10日` (`令和元年5月1日` on 2019-05-01), `GE.m.d` → `R7.11.10`.
 
 use crate::Session;
 
@@ -13,7 +17,7 @@ use crate::Session;
 pub const DEFAULT_DATE_FORMAT: &str = "m/d/yyyy";
 
 /// Ready-made formats for Preferences ▸ Date format. Any other valid pattern works too.
-pub const DATE_FORMATS: [&str; 14] = [
+pub const DATE_FORMATS: [&str; 16] = [
     "m/d/yyyy",
     "mm/dd/yyyy",
     "d/m/yyyy",
@@ -29,6 +33,9 @@ pub const DATE_FORMATS: [&str; 14] = [
     "mmm d, yyyy",
     "mmmm d, yyyy",
     "dddd, mmmm d, yyyy",
+    // Japanese era (和暦): 令和7年11月10日 (令和元年 for year 1) and R7.11.10.
+    "ggEE年m月d日",
+    "GE.m.d",
 ];
 
 /// The longest pattern kept (settings and tool arguments are untrusted).
@@ -601,7 +608,9 @@ pub fn unwritable(text: &str) -> String {
     let mut out = String::new();
     for c in text.chars() {
         let mut buf = [0u8; 4];
-        if c != '?' && pdfcraft_fonts::win_ansi(c.encode_utf8(&mut buf)) == b"?" && !out.contains(c) {
+        // pdfcraft-JPN: Japanese (and what the Japanese face draws) is written with that face.
+        let drawn = pdfcraft_fonts::shaped_text::first_undrawable(c.encode_utf8(&mut [0u8; 4])).is_none();
+        if c != '?' && pdfcraft_fonts::win_ansi(c.encode_utf8(&mut buf)) == b"?" && !drawn && !out.contains(c) {
             out.push(c);
         }
     }
@@ -630,6 +639,9 @@ pub fn check_date_format(fmt: &str) -> Result<&str, String> {
         let fits = match c {
             'y' => n == 2 || n == 4,
             'm' | 'd' => (1..=4).contains(&n),
+            'g' => n == 2,
+            'G' => n == 1,
+            'E' => n <= 2,
             _ => true,
         };
         if !fits {
@@ -637,6 +649,9 @@ pub fn check_date_format(fmt: &str) -> Result<&str, String> {
             let use_ = match c {
                 'y' => "yy or yyyy",
                 'm' => "m, mm, mmm or mmmm",
+                'g' => "gg",
+                'G' => "G",
+                'E' => "E or EE",
                 _ => "d, dd, ddd or dddd",
             };
             return Err(format!("`{code}` is not a date code; use {use_}"));
@@ -665,6 +680,7 @@ pub fn format_day(fmt: &str, (y, m, d): (i64, u32, u32), lang: &DateLanguage) ->
     let with_day = runs.iter().any(|&(c, n, escaped)| !escaped && c == 'd' && n <= 2);
     let month = (m as usize).checked_sub(1);
     let weekday = weekday(y, m, d);
+    let era = pdfcraft_edit::era::japanese_era(y, m, d);
     let mut out = String::new();
     for (c, n, escaped) in runs {
         match (c, n) {
@@ -678,6 +694,13 @@ pub fn format_day(fmt: &str, (y, m, d): (i64, u32, u32), lang: &DateLanguage) ->
                     None => out.push_str(&m.to_string()),
                 }
             }
+            // Japanese era (和暦): `gg` the era name, `G` its Latin initial, `E` the year in it,
+            // `EE` the same with 元 for the first year. Before 明治 the name is empty and the
+            // year is the Gregorian one.
+            ('g', 2) => out.push_str(era.map_or("", |(e, _)| e.name)),
+            ('G', 1) => out.extend(era.map(|(e, _)| e.initial)),
+            ('E', 1) => out.push_str(&era.map_or(y, |(_, ey)| ey).to_string()),
+            ('E', 2) => out.push_str(&era.map_or_else(|| y.to_string(), |(_, ey)| pdfcraft_edit::era::era_year_text(ey))),
             ('m', 2) => out.push_str(&format!("{m:02}")),
             ('m', _) => out.push_str(&m.to_string()),
             ('d', 3..) => {
@@ -800,10 +823,33 @@ mod tests {
                 "Mar 7, 2026",
                 "March 7, 2026",
                 "Saturday, March 7, 2026",
+                "令和8年3月7日",
+                "R8.3.7",
             ]
         );
         assert!(DATE_FORMATS.iter().all(|f| check_date_format(f).is_ok()));
         assert_eq!(DATE_FORMATS[0], DEFAULT_DATE_FORMAT);
+    }
+
+    #[test]
+    fn japanese_era_letters() {
+        let ja = date_language("ja").unwrap();
+        let f = |fmt: &str, day| format_day(fmt, day, ja);
+        assert_eq!(f("ggEE年m月d日", (2025, 11, 10)), "令和7年11月10日");
+        assert_eq!(f("ggEE年m月d日", (2019, 5, 1)), "令和元年5月1日");
+        assert_eq!(f("ggEE年m月d日", (2019, 4, 30)), "平成31年4月30日");
+        assert_eq!(f("ggEE年m月d日", (1989, 1, 7)), "昭和64年1月7日");
+        assert_eq!(f("ggE年m月d日", (2019, 5, 1)), "令和1年5月1日", "E keeps the number");
+        assert_eq!(f("GE.m.d", (2025, 11, 10)), "R7.11.10");
+        assert_eq!(f("GEE.mm.dd", (2019, 5, 1)), "R元.05.01");
+        assert_eq!(f("ggEE年m月d日", (1700, 1, 1)), "1700年1月1日", "before 明治 the Gregorian year");
+        assert_eq!(check_date_format("ggEE年m月d日"), Ok("ggEE年m月d日"));
+        assert!(check_date_format("ggg m").unwrap_err().contains("not a date code"));
+        assert!(check_date_format("GG").is_err());
+        assert!(check_date_format("EEE").is_err());
+        let mut s = Session::new().with_clock(|| 1_700_000_000);
+        s.set_date_format("ggEE年m月d日").unwrap();
+        assert_eq!(s.today_text(None, None).as_deref(), Ok("令和5年11月14日"));
     }
 
     #[test]
@@ -1014,8 +1060,10 @@ mod tests {
 
     #[test]
     fn dates_the_pdf_cannot_hold_are_refused_not_damaged() {
-        assert_eq!(unwritable("8. října 2026"), "ř");
-        assert_eq!(unwritable("2026年10月8日"), "年月日");
+        let ja = pdfcraft_fonts::document_japanese_font_for_style(false, false).is_some();
+        assert_eq!(unwritable("2026年10月8日"), if ja { "" } else { "年月日" });
+        assert_eq!(unwritable("令和元年5月1日"), if ja { "" } else { "令和元年月日" });
+        assert_eq!(unwritable("\u{13000} 2026"), "\u{13000}");
         assert_eq!(unwritable("sábado, 7 de março – 2026?"), "", "Western European, dashes and ? are fine");
         assert_eq!(unwritable("lørdag 7. mars, søn. 8. mai (æøå ÆØÅ)"), "", "Norwegian letters are Western European");
         let mut s = Session::new().with_clock(|| 1_700_000_000);
