@@ -320,6 +320,10 @@ pub(crate) fn panel(
         if icons::button(ui, "italic", 30.0, look.italic, tl!("Italic")).clicked() {
             look.italic = !look.italic;
         }
+        // pdfcraft-JPN: vertical writing (縦書き) for added text.
+        if icons::button(ui, "columns-2", 30.0, look.vertical, tl!("Vertical writing")).clicked() {
+            look.vertical = !look.vertical;
+        }
         match extras.as_deref_mut() {
             Some(e) => {
                 if icons::button(ui, "underline", 30.0, e.underline, tl!("Underline")).clicked() {

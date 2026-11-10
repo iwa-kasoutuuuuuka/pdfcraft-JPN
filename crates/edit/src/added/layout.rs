@@ -1,4 +1,6 @@
 use super::types::{AddedImage, AddedText};
+
+pub(super) mod ruby;
 use super::{
     Content, Document, EditError, GlyphError, Level, ObjRef, Object, ParagraphBidiInfo, ShapedScript, shape_arabic, shape_hebrew, shape_thai,
 };
@@ -38,7 +40,8 @@ pub(super) fn wrapped(t: &AddedText) -> Vec<(String, bool, usize)> {
     for (index, para) in t.text.split('\n').enumerate() {
         // Arabic or Hebrew: laid out with the bidirectional algorithm and shaped.
         let rtl_script = para.chars().any(|c| is_arabic(c) || is_hebrew(c));
-        let thai = para.chars().any(is_thai);
+        // pdfcraft-JPN: Japanese is laid out like Thai (shaped clusters, breaks inside runs).
+        let thai = para.chars().any(is_shaped);
         if thai
             && !rtl_script
             && let Ok(lines) = thai_lines(t, para, width)
@@ -83,16 +86,26 @@ pub(super) fn wrapped(t: &AddedText) -> Vec<(String, bool, usize)> {
 /// broken inside, at shaped cluster boundaries, which never detach a tone or vowel mark from its
 /// base.
 fn thai_lines(t: &AddedText, para: &str, width: f64) -> Result<Vec<String>, EditError> {
-    let (pieces, _) = shaped_layout(t, para, false)?;
     let mut atoms = Vec::new();
-    for piece in pieces {
-        match piece {
-            Piece::Shaped(clusters) => atoms.extend(clusters.into_iter().map(|c| (c.text, c.advance * t.size + t.char_spacing))),
-            Piece::Latin(s) => atoms.extend(s.chars().map(|c| {
-                let text = c.to_string();
-                let w = latin_width(t, &text);
-                (text, w)
-            })),
+    // pdfcraft-JPN: a ruby group (base with its markup) is one atom as wide as its base.
+    for seg in ruby::ruby_spans(para) {
+        let text = match seg {
+            ruby::Segment::Plain(s) => s,
+            ruby::Segment::Ruby { base, source, .. } => {
+                atoms.push((source, shaped_layout(t, &base, false)?.1));
+                continue;
+            }
+        };
+        let (pieces, _) = shaped_layout(t, &text, false)?;
+        for piece in pieces {
+            match piece {
+                Piece::Shaped(clusters) => atoms.extend(clusters.into_iter().map(|c| (c.text, c.advance * t.size + t.char_spacing))),
+                Piece::Latin(s) => atoms.extend(s.chars().map(|c| {
+                    let text = c.to_string();
+                    let w = latin_width(t, &text);
+                    (text, w)
+                })),
+            }
         }
     }
     Ok(wrap_words(thai_words(atoms), width))
@@ -151,7 +164,13 @@ fn thai_words(atoms: Vec<(String, f64)>) -> Vec<Vec<(String, f64)>> {
             }
             (true, Some(start)) => {
                 let run = text.get(start..at).unwrap_or_default();
-                cuts.extend(crate::linebreak::breaks(run).into_iter().map(|b| start.saturating_add(b)));
+                // pdfcraft-JPN: and between Japanese characters (kinsoku rules kept). Only this
+                // run's breaks are merged and sorted, so the work stays linear in the paragraph.
+                let mut breaks = crate::linebreak::breaks(run);
+                breaks.extend(pdfcraft_fonts::cjk_break_offsets(run));
+                breaks.sort_unstable();
+                breaks.dedup();
+                cuts.extend(breaks.into_iter().map(|b| start.saturating_add(b)));
                 run_start = None;
             }
             _ => {}
@@ -175,7 +194,7 @@ fn thai_words(atoms: Vec<(String, f64)>) -> Vec<Vec<(String, f64)>> {
     words
 }
 
-pub(super) use pdfcraft_fonts::shaped_text::{Piece, is_thai};
+pub(super) use pdfcraft_fonts::shaped_text::{Piece, is_japanese, is_shaped, is_thai};
 
 /// Arabic letters, marks, digits and punctuation: an item with any of them is shaped with the
 /// craft-fonts Arabic face.
@@ -194,11 +213,18 @@ pub(super) fn is_hebrew(c: char) -> bool {
 /// draw (or that has no face to draw it). Page-content tools refuse such text; the Add-text editor
 /// keeps it open.
 pub fn first_undrawable(t: &AddedText) -> Option<char> {
-    if t.text.chars().any(is_thai) {
-        if let Some(c) = t.text.chars().find(|c| is_thai(*c) && !pdfcraft_fonts::thai_has(*c)) {
+    // pdfcraft-JPN: the ruby markup characters aren't drawn; the base and the ruby are.
+    if ruby::has_ruby(&t.text) {
+        return first_undrawable(&AddedText { text: ruby::without_markup(&t.text), ..t.clone() });
+    }
+    if t.vertical {
+        return super::vertical::first_undrawable_vertical(t);
+    }
+    if t.text.chars().any(is_shaped) {
+        if let Some(c) = t.text.chars().find(|c| (is_thai(*c) && !pdfcraft_fonts::thai_has(*c)) || (is_japanese(*c) && !japanese_drawable(*c))) {
             return Some(c);
         }
-        let rest = AddedText { text: t.text.chars().filter(|c| !is_thai(*c)).collect(), ..t.clone() };
+        let rest = AddedText { text: t.text.chars().filter(|c| !is_thai(*c) && !japanese_drawable(*c)).collect(), ..t.clone() };
         return first_undrawable(&rest);
     }
     // Arabic or Hebrew that nothing can draw: there's no face, or the face lacks it.
@@ -220,6 +246,11 @@ pub fn first_undrawable(t: &AddedText) -> Option<char> {
             Piece::Shaped(_) => None,
         })
     })
+}
+
+/// A [`is_japanese`] character the Japanese face draws (Arabic and Hebrew go to their own faces).
+fn japanese_drawable(c: char) -> bool {
+    is_japanese(c) && !is_arabic(c) && !is_hebrew(c) && !is_bidi_control(c) && pdfcraft_fonts::japanese_has(c)
 }
 
 /// Whether `t` has Arabic or Hebrew that its craft-fonts face draws (so `draw` lays it out with
@@ -262,6 +293,10 @@ pub(super) fn shaped_layout(t: &AddedText, line: &str, rtl: bool) -> Result<(Vec
     if line.is_empty() {
         return Ok((Vec::new(), 0.0));
     }
+    // pdfcraft-JPN: ruby markup is not drawn in the line; its base is.
+    if ruby::has_ruby(line) {
+        return shaped_layout(t, &ruby::visible(line), rtl);
+    }
     let base = if rtl { Level::rtl() } else { Level::ltr() };
     let info = ParagraphBidiInfo::new(line, Some(base));
     let (levels, runs) = info.visual_runs(0..line.len());
@@ -282,6 +317,8 @@ pub(super) fn shaped_layout(t: &AddedText, line: &str, rtl: bool) -> Result<(Vec
                 Some(ShapedScript::Hebrew)
             } else if is_arabic(c) || (run_rtl && !c.is_alphanumeric() && pdfcraft_fonts::arabic_has(c)) {
                 Some(ShapedScript::Arabic)
+            } else if is_japanese(c) {
+                Some(ShapedScript::Japanese)
             } else {
                 None
             };
@@ -299,6 +336,7 @@ pub(super) fn shaped_layout(t: &AddedText, line: &str, rtl: bool) -> Result<(Vec
                     ShapedScript::Arabic => shape_arabic(&s, run_rtl).map_err(|e| arabic_error(e, &s))?,
                     ShapedScript::Hebrew => shape_hebrew(&s, run_rtl).map_err(|e| hebrew_error(e, &s))?,
                     ShapedScript::Thai => shape_thai(&s).map_err(|e| thai_error(e, &s))?,
+                    ShapedScript::Japanese => pdfcraft_fonts::shape_japanese(&s).map_err(|e| thai_error(e, &s))?,
                 };
                 Piece::Shaped(shaped)
             } else if run_rtl {
@@ -344,8 +382,12 @@ pub(super) fn thai_error(e: GlyphError, text: &str) -> EditError {
 
 /// The box a text item occupies (height from its lines).
 pub fn text_rect(t: &AddedText) -> [f64; 4] {
+    if t.vertical {
+        return super::vertical::vertical_rect(t);
+    }
     let r = norm(t.rect);
-    let h = lines(t).len().max(1) as f64 * t.size * 1.2;
+    let all = lines(t);
+    let h = all.len().max(1) as f64 * t.size * 1.2 + all.iter().map(|l| ruby::lead(t, l)).sum::<f64>();
     [r[0], r[3] - h, r[2], r[3]]
 }
 

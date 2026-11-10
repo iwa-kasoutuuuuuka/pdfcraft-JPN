@@ -7751,10 +7751,23 @@ fn text_the_standard_fonts_cannot_draw_is_never_silent_through_tools() {
     let out = ok(&mut a, "form_add_field", json!({ "doc": doc, "page": 1, "type": "button", "rect": [20, 60, 120, 82], "caption": "提交" }));
     warned(&out, &["\"提\" (U+63D0)"]);
     // Comments and Fill & Sign text: kept, and said.
-    let out = ok(&mut a, "comment_add", json!({ "doc": doc, "page": 1, "type": "textbox", "rect": [10, 200, 190, 240], "contents": "欢迎" }));
-    warned(&out, &["a comment on page 1", "\"欢\" (U+6B22)", "every viewer"]);
-    let out = ok(&mut a, "fill_sign_add", json!({ "doc": doc, "page": 1, "type": "text", "at": [20, 300], "text": "签名" }));
-    warned(&out, &["U+7B7E"]);
+    // A text box draws Japanese where the build has the Japanese face, and refuses (never `?`) what no face can draw.
+    let japanese = pdfcraft_fonts::document_japanese_font_for_style(false, false).is_some();
+    let box_args = |text: &str| json!({ "doc": doc, "page": 1, "type": "textbox", "rect": [10, 200, 190, 240], "contents": text });
+    refused(&mut a, "comment_add", box_args("\u{13000}\u{13001}"), "can't show");
+    if japanese {
+        let out = ok(&mut a, "comment_add", box_args("日本語"));
+        assert!(out.get("warnings").is_none(), "{out}");
+    } else {
+        refused(&mut a, "comment_add", box_args("日本語"), "Japanese");
+    }
+    // Fill & Sign text is a text box: Japanese drawn where the build has the face, the undrawable refused.
+    let sign_args = |text: &str| json!({ "doc": doc, "page": 1, "type": "text", "at": [20, 300], "text": text });
+    refused(&mut a, "fill_sign_add", sign_args("\u{13000}\u{13001}"), "can't show");
+    if japanese {
+        let out = ok(&mut a, "fill_sign_add", sign_args("署名"));
+        assert!(out.get("warnings").is_none(), "{out}");
+    }
     // A sticky note draws an icon, not its text: nothing to say.
     let out = ok(&mut a, "comment_add", json!({ "doc": doc, "page": 1, "type": "note", "at": [40, 40], "contents": "签名 OK", "author": "Ada" }));
     assert!(out.get("warnings").is_none(), "{out}");

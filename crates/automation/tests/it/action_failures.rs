@@ -16,11 +16,18 @@ fn one_step(step: Step) -> Action {
     Action { name: "Custom".into(), description: String::new(), steps: vec![step], builtin: false }
 }
 
-/// The standard fonts can't draw the character, so the watermark step fails and no file is produced.
+/// No face in the build can draw the character (an Egyptian hieroglyph), so the watermark step fails and no file is produced.
 #[test]
 fn failing_watermark_step_fails_the_file_and_publishes_nothing() {
-    let r = run_on(&one_step(Step::AddWatermark("中".into())), "one.pdf", Arc::new(pdf()), |_, _| {});
+    let r = run_on(&one_step(Step::AddWatermark("\u{13000}".into())), "one.pdf", Arc::new(pdf()), |_, _| {});
     assert!(r.is_err(), "a failed step must fail its file: {r:?}");
+}
+
+/// Japanese is drawable where the build has the Japanese face, and fails the file where it doesn't.
+#[test]
+fn japanese_watermark_step_succeeds_exactly_when_the_build_has_a_japanese_face() {
+    let r = run_on(&one_step(Step::AddWatermark("機密".into())), "one.pdf", Arc::new(pdf()), |_, _| {});
+    assert_eq!(r.is_ok(), pdfcraft_fonts::document_japanese_font_for_style(false, false).is_some(), "{r:?}");
 }
 
 /// A comment step on a document with no comments has nothing to do, which is not a failure.
@@ -45,7 +52,7 @@ fn action_run_marks_the_failing_file_as_error_without_output() {
         &json!({
             "paths": [in_file.to_string_lossy()],
             "folder": out.to_string_lossy(),
-            "steps": [{ "step": "add_watermark", "arg": "中" }],
+            "steps": [{ "step": "add_watermark", "arg": "\u{13000}" }],
         }),
     );
     let report = match reply.unwrap().remove(0) {

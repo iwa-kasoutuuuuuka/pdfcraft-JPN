@@ -3,6 +3,9 @@ use super::layout::{first_undrawable, is_thai, nums, shaped_arabic, thai_error};
 use super::types::{Added, AddedImage, AddedText, CHAR_SPACING_LIMIT, Family, Ink, MarkerScan, TAG};
 use super::{Content, Dict, Document, EditError, GlyphError, MarkKind, ObjRef, Object, Stream, align_from, check, contents, page_list, place_tagged};
 
+/// The most characters one added text item may hold (pdfcraft-JPN).
+pub const MAX_ADDED_TEXT_CHARS: usize = 100_000;
+
 /// A text item's gray or CMYK ink. Items written before inks, and an ink out of range or not
 /// made only of numbers (a `/Gray` name, a `/CMYK` entry that isn't a number), have none: the
 /// text paints in its RGB `/Color`.
@@ -47,6 +50,7 @@ fn parse(doc: &Document, d: &Dict) -> Option<Content> {
                 })
                 .unwrap_or_default();
             let mut t = AddedText {
+                vertical: matches!(d.get(b"Vertical"), Some(Object::Bool(true))),
                 rect,
                 text,
                 family,
@@ -179,8 +183,19 @@ fn validate(c: &Content) -> Result<(), EditError> {
             if (r[2] - r[0]).abs() < 1.0 {
                 return Err(EditError::Invalid("the text box is too narrow".into()));
             }
+            // pdfcraft-JPN: shaped (Japanese, Thai) text is laid out per character; a bound keeps
+            // one item from tying up the editor or the MCP server.
+            if t.text.chars().count() > MAX_ADDED_TEXT_CHARS {
+                return Err(EditError::Invalid(format!("the text is too long (at most {MAX_ADDED_TEXT_CHARS} characters in one item)")));
+            }
             if t.text.chars().any(is_thai) && pdfcraft_fonts::document_thai_font().is_none() {
                 return Err(thai_error(GlyphError::NoFont, &t.text));
+            }
+            // pdfcraft-JPN: Japanese needs the Japanese face.
+            if let Some(c) = t.text.chars().find(|c| super::layout::is_japanese(*c) && !super::layout::is_arabic(*c) && !super::layout::is_hebrew(*c))
+                && pdfcraft_fonts::document_japanese_font_for_style(false, false).is_none()
+            {
+                return Err(thai_error(GlyphError::NoFont, &c.to_string()));
             }
             // Without the Arabic face, `draw` decides for the Arabic letters themselves (#403): a new
             // item is refused with what's missing, and one that already holds Arabic stays movable.

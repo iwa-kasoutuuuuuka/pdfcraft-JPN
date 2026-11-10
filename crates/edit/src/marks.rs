@@ -1,4 +1,4 @@
-use pdfcraft_fonts::shaped_text::{Piece, ShapedFonts, clusters, first_undrawable_in_line, is_thai, thai_message, thai_pieces};
+use pdfcraft_fonts::shaped_text::{Piece, ShapedFonts, clusters, first_undrawable_in_line, is_shaped, thai_message, thai_pieces};
 
 use super::{Dict, Document, EditError, Object, Rgb, added};
 
@@ -23,7 +23,7 @@ impl MarkText {
         lines: impl IntoIterator<Item = &'a str>,
     ) -> Result<Self, EditError> {
         let thai = |line: &str| thai_pieces(line).map_err(|e| EditError::Invalid(thai_message(e, line)));
-        let pieces = lines.into_iter().filter(|l| l.chars().any(is_thai)).map(thai).collect::<Result<Vec<_>, _>>()?;
+        let pieces = lines.into_iter().filter(|l| l.chars().any(is_shaped)).map(thai).collect::<Result<Vec<_>, _>>()?;
         if pieces.is_empty() {
             return Ok(Self::default());
         }
@@ -58,7 +58,7 @@ impl MarkText {
     ) {
         let plain = || vec![Piece::Latin(line.into())];
         // `new` shaped every line drawn, so this shapes.
-        let pieces = if self.fonts.is_empty() || !line.chars().any(is_thai) { plain() } else { thai_pieces(line).unwrap_or_else(|_| plain()) };
+        let pieces = if self.fonts.is_empty() || !line.chars().any(is_shaped) { plain() } else { thai_pieces(line).unwrap_or_else(|_| plain()) };
         self.shaped.show_line(out, &pieces, x, y, size, latin, pdfcraft_fonts::win_ansi, width, current);
     }
 
@@ -100,7 +100,8 @@ pub struct HeaderFooter {
     /// `<<Page 1 of n>>`, dates `<<m/d/yyyy>>`, `<<mm/dd/yyyy>>`, `<<d/m/yyyy>>`, `<<yyyy-mm-dd>>`,
     /// `<<yyyy/mm/dd>>`, `<<yyyy/m/d>>`, `<<m/d/yy>>`, `<<mmmm d, yyyy>>`, the dotted day-first
     /// dates of German-speaking and much of Central and Eastern Europe `<<dd.mm.yyyy>>`,
-    /// `<<d.m.yyyy>>`, `<<dd.mm.yy>>`, `<<d.m.yy>>`, and Bates numbers `<<Bates Number#6#1#PRE#SUF>>`
+    /// `<<d.m.yyyy>>`, `<<dd.mm.yy>>`, `<<d.m.yy>>`, Japanese era dates `<<ggEE年m月d日>>`
+    /// (令和7年11月10日, 令和元年5月1日) and `<<GE.m.d>>` (R7.11.10), and Bates numbers `<<Bates Number#6#1#PRE#SUF>>`
     /// (digits, start, prefix, suffix).
     pub text: [String; 6],
     /// The standard face the text is drawn in (#3754): Helvetica (the default), Times or Courier.
@@ -355,6 +356,9 @@ pub fn expand(template: &str, page_number: u32, count: usize, bates: u64, cx: &C
             "yyyy/mm/dd" => format!("{y}/{m:02}/{d:02}"),
             "yyyy/m/d" => format!("{y}/{m}/{d}"),
             "mmmm d, yyyy" => format!("{} {d}, {y}", MONTHS[(m.clamp(1, 12) - 1) as usize]),
+            // Japanese era (和暦); before 明治 there is no era, so the Gregorian year is shown.
+            "ggEE年m月d日" => crate::era::format_japanese(y, m, d).unwrap_or_else(|| format!("{y}年{m}月{d}日")),
+            "GE.m.d" => crate::era::format_japanese_short(y, m, d).unwrap_or_else(|| format!("{y}.{m}.{d}")),
             t if t.starts_with("Bates Number") => {
                 // Bates Number#digits#start#prefix#suffix (start is applied by the caller).
                 let parts: Vec<&str> = t.split('#').collect();
@@ -386,6 +390,16 @@ pub(crate) fn bates_start(template: &str) -> Option<u64> {
 #[cfg(test)]
 mod expand_tests {
     use super::*;
+
+    #[test]
+    fn japanese_era_date_tokens() {
+        let cx = Context { date: (2025, 11, 10) };
+        assert_eq!(expand("<<ggEE年m月d日>> / <<GE.m.d>>", 1, 1, 1, &cx), "令和7年11月10日 / R7.11.10");
+        let cx = Context { date: (2019, 5, 1) };
+        assert_eq!(expand("<<ggEE年m月d日>>", 1, 1, 1, &cx), "令和元年5月1日");
+        let cx = Context { date: (1700, 5, 1) };
+        assert_eq!(expand("<<ggEE年m月d日>>", 1, 1, 1, &cx), "1700年5月1日");
+    }
 
     #[test]
     fn expand_token_after_extra_angle_brackets() {

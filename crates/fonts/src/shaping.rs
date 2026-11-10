@@ -28,6 +28,9 @@ pub enum ShapedScript {
     Arabic,
     Hebrew,
     Thai,
+    /// Japanese (kana, kanji, full-width forms and the other characters the standard fonts
+    /// can't draw), in the Japanese sans document face (BIZ UDPGothic). pdfcraft-JPN.
+    Japanese,
 }
 
 impl ShapedScript {
@@ -36,6 +39,7 @@ impl ShapedScript {
             Self::Arabic => crate::document_arabic_font(),
             Self::Hebrew => crate::document_hebrew_font(false),
             Self::Thai => crate::document_thai_font(),
+            Self::Japanese => crate::document_japanese_font_for_style(false, false),
         }
     }
 }
@@ -44,10 +48,12 @@ fn face(script: ShapedScript) -> Option<&'static (FontRef<'static>, ShaperData)>
     static FACE: OnceLock<Option<(FontRef<'static>, ShaperData)>> = OnceLock::new();
     static HEBREW: OnceLock<Option<(FontRef<'static>, ShaperData)>> = OnceLock::new();
     static THAI: OnceLock<Option<(FontRef<'static>, ShaperData)>> = OnceLock::new();
+    static JAPANESE: OnceLock<Option<(FontRef<'static>, ShaperData)>> = OnceLock::new();
     let cache = match script {
         ShapedScript::Arabic => &FACE,
         ShapedScript::Hebrew => &HEBREW,
         ShapedScript::Thai => &THAI,
+        ShapedScript::Japanese => &JAPANESE,
     };
     cache
         .get_or_init(|| {
@@ -91,21 +97,53 @@ pub fn shape_thai(text: &str) -> Result<Vec<ShapedCluster>, GlyphError> {
     shape_script(text, false, ShapedScript::Thai)
 }
 
+/// Whether the Japanese document face has a glyph for `c` (false without the face).
+pub fn japanese_has(c: char) -> bool {
+    face(ShapedScript::Japanese).is_some_and(|(font, _)| font.charmap().map(c).is_some())
+}
+
+/// Shape `text` with the Japanese document face, one cluster per character, in typing order.
+/// Horizontal text: the clusters advance along x.
+pub fn shape_japanese(text: &str) -> Result<Vec<ShapedCluster>, GlyphError> {
+    shape_script(text, false, ShapedScript::Japanese)
+}
+
+/// Where a vertically shaped cluster's glyphs are drawn from (em): the left edge of its
+/// column cell and its baseline, 0.88 em below the cell's top (the ideographic em box runs from
+/// -0.12 to 0.88). A caller places each cluster at `(centre - 0.5 em, top - 0.88 em)`, so the
+/// glyph's em box, which selection and search use, covers its cell.
+pub const VERTICAL_ORIGIN: [f64; 2] = [0.5, 0.88];
+
+/// Shape `text` for vertical writing (縦書き) with the Japanese document face: the face's
+/// vertical forms (`vert`: 、。「」ー and the like turned for columns) replace the horizontal ones.
+/// Each cluster's `advance` is its advance down the column, in em; glyph offsets are from
+/// [`VERTICAL_ORIGIN`].
+pub fn shape_japanese_vertical(text: &str) -> Result<Vec<ShapedCluster>, GlyphError> {
+    shape_script_dir(text, Direction::TopToBottom, ShapedScript::Japanese)
+}
+
 fn shape_script(text: &str, rtl: bool, kind: ShapedScript) -> Result<Vec<ShapedCluster>, GlyphError> {
+    shape_script_dir(text, if rtl { Direction::RightToLeft } else { Direction::LeftToRight }, kind)
+}
+
+fn shape_script_dir(text: &str, direction: Direction, kind: ShapedScript) -> Result<Vec<ShapedCluster>, GlyphError> {
     let (font, data) = face(kind).ok_or(GlyphError::NoFont)?;
     let shaper = data.shaper(font).build();
     let scale = 1.0 / f64::from(shaper.units_per_em().max(1));
+    let vertical = direction == Direction::TopToBottom;
     let mut buffer = UnicodeBuffer::new();
     buffer.push_str(text);
-    buffer.set_direction(if rtl { Direction::RightToLeft } else { Direction::LeftToRight });
+    buffer.set_direction(direction);
     buffer.set_script(match kind {
         ShapedScript::Arabic => script::ARABIC,
         ShapedScript::Hebrew => script::HEBREW,
         ShapedScript::Thai => script::THAI,
+        ShapedScript::Japanese => script::HAN,
     });
-    // Preserve the historical Arabic per-character mapping; Hebrew and Thai marks stay with their base.
+    // Preserve the historical Arabic per-character mapping; Hebrew and Thai marks stay with their
+    // base. Japanese is one character per cluster, so a line can break between any two.
     buffer.set_cluster_level(match kind {
-        ShapedScript::Arabic => BufferClusterLevel::Characters,
+        ShapedScript::Arabic | ShapedScript::Japanese => BufferClusterLevel::Characters,
         ShapedScript::Hebrew | ShapedScript::Thai => BufferClusterLevel::MonotoneGraphemes,
     });
     let shaped = shaper.shape(buffer, ShapeOptions::new());
@@ -131,9 +169,17 @@ fn shape_script(text: &str, rtl: bool, kind: ShapedScript) -> Result<Vec<ShapedC
                 c
             }
         };
-        let at = [cluster.advance + f64::from(pos.x_offset) * scale, f64::from(pos.y_offset) * scale];
-        cluster.glyphs.push((info.glyph_id, at));
-        cluster.advance += f64::from(pos.x_advance) * scale;
+        if vertical {
+            // Down the column: y advances are negative in font units. The shaper's offsets are
+            // from the column's centre line at the cell's top; kept from VERTICAL_ORIGIN.
+            let at = [VERTICAL_ORIGIN[0] + f64::from(pos.x_offset) * scale, VERTICAL_ORIGIN[1] - cluster.advance + f64::from(pos.y_offset) * scale];
+            cluster.glyphs.push((info.glyph_id, at));
+            cluster.advance += -f64::from(pos.y_advance) * scale;
+        } else {
+            let at = [cluster.advance + f64::from(pos.x_offset) * scale, f64::from(pos.y_offset) * scale];
+            cluster.glyphs.push((info.glyph_id, at));
+            cluster.advance += f64::from(pos.x_advance) * scale;
+        }
     }
     Ok(out.into_iter().map(|(_, c)| c).collect())
 }

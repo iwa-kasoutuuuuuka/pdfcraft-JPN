@@ -35,6 +35,64 @@ fn fixture() -> Document {
     Document::open(Arc::new(out)).unwrap()
 }
 
+/// pdfcraft-JPN: vertical added text draws, and the page's text layer reads its columns top to
+/// bottom, the right one first, Western words included; horizontal Japanese reads by line.
+#[test]
+fn vertical_japanese_text_reads_in_column_order() {
+    if pdfcraft_fonts::document_japanese_font_for_style(false, false).is_none() {
+        eprintln!("skipping: built without a craft-fonts Jpan face");
+        return;
+    }
+    let mut doc = fixture();
+    let vertical = AddedText {
+        vertical: true,
+        rect: [300.0, 400.0, 500.0, 600.0],
+        text: "吾輩は猫である。名前はまだ無い。PDF も書ける".into(),
+        size: 20.0,
+        ..AddedText::default()
+    };
+    let horizontal = AddedText { rect: [40.0, 100.0, 400.0, 200.0], text: "横書きの日本語".into(), size: 14.0, ..AddedText::default() };
+    add_content(&mut doc, 2, &Content::Text(vertical.clone())).unwrap();
+    add_content(&mut doc, 1, &Content::Text(horizontal)).unwrap();
+    let reopened = reopen(&doc);
+    assert_eq!(list_added(&reopened).iter().filter(|a| a.page == 2).count(), 1);
+    assert!(list_added(&reopened).iter().any(|a| matches!(&a.content, Content::Text(t) if t.vertical)), "the setting survives a save");
+    let bytes = write_incremental(&doc, &SaveOptions::default()).unwrap();
+    let mut renderer = pdfcraft_render::PageRenderer::new(Arc::new(bytes), pdfcraft_render::RenderConfig::default());
+    let out = renderer.render(pdfcraft_render::RenderRequest { page: 2, kind: pdfcraft_render::RequestKind::Text, scale: 1.0, ..Default::default() });
+    let text = out.text.expect("a text layer").plain_text();
+    // Every character once, in the order typed: column by column, the right one first.
+    assert_eq!(text.replace('\n', ""), vertical.text, "{text}");
+    assert!(text.lines().count() >= 2, "{text}");
+}
+
+/// pdfcraft-JPN: 縦中横 and ルビ keep the page's text layer reading the base text only, in order.
+#[test]
+fn ruby_and_tate_chu_yoko_read_as_the_base_text() {
+    if pdfcraft_fonts::document_japanese_font_for_style(false, false).is_none() {
+        eprintln!("skipping: built without a craft-fonts Jpan face");
+        return;
+    }
+    let mut doc = fixture();
+    let text = "令和7年に東京《とうきょう》へ行き、｜親文字《るび》も読む。";
+    let mut vertical = AddedText { vertical: true, rect: [300.0, 400.0, 500.0, 600.0], text: text.into(), size: 20.0, ..AddedText::default() };
+    add_content(&mut doc, 2, &Content::Text(vertical.clone())).unwrap();
+    vertical.vertical = false;
+    vertical.rect = [40.0, 100.0, 400.0, 200.0];
+    add_content(&mut doc, 1, &Content::Text(vertical)).unwrap();
+    let reopened = reopen(&doc);
+    assert!(list_added(&reopened).iter().any(|a| matches!(&a.content, Content::Text(t) if t.text == text)), "the markup is stored as typed");
+    let bytes = write_incremental(&doc, &SaveOptions::default()).unwrap();
+    let mut renderer = pdfcraft_render::PageRenderer::new(Arc::new(bytes), pdfcraft_render::RenderConfig::default());
+    for page in [1, 2] {
+        let out = renderer.render(pdfcraft_render::RenderRequest { page, kind: pdfcraft_render::RequestKind::Text, scale: 1.0, ..Default::default() });
+        let got = out.text.expect("a text layer").plain_text();
+        // (Page 1's fixture has its own text.)
+        assert!(got.replace('\n', "").contains("令和7年に東京へ行き、親文字も読む。"), "page {page}: {got}");
+        assert!(!got.contains("とうきょう") && !got.contains("るび"), "page {page}: {got}");
+    }
+}
+
 fn reopen(doc: &Document) -> Document {
     let bytes = write_incremental(doc, &SaveOptions::default()).unwrap();
     hayro_syntax::Pdf::new(bytes.clone()).expect("parses");
@@ -6532,26 +6590,38 @@ fn header_and_watermark_drawability_matches_what_applying_refuses() {
         text: [String::new(), String::new(), String::new(), String::new(), String::new(), t.into()],
         ..HeaderFooter::default()
     };
+    // pdfcraft-JPN: the Japanese face draws Cyrillic and Greek too, where this build has it.
+    let ja = pdfcraft_fonts::document_japanese_font_for_style(false, false).is_some();
+    // A character only the shaped (Japanese) face could draw is refused by that face, naming the
+    // offending line; a standard-font character (the lone CR) by the standard fonts' message.
+    let expected = |c: char| match c {
+        '\u{13000}' if ja => pdfcraft_fonts::shaped_text::thai_message(pdfcraft_fonts::GlyphError::Missing, "\u{13000}"),
+        '\u{13000}' => "Japanese text needs a Japanese font, and this build has none; rebuild with a craft-fonts checkout \
+                        (CRAFT_FONTS_DIR, or ./craft-fonts) that has a Jpan face"
+            .into(),
+        c => undrawable_message(c),
+    };
     for (text, refused) in [
-        ("Страница <<1>> из 1 / Page <<1>> of 1", Some('С')),
+        ("Страница <<1>> из 1 / Page <<1>> of 1", if ja { None } else { Some('С') }),
         ("TEST-001 <<Page 1 of n>>", None),
         ("Café — 5€ ™ <<Bates Number#6#1#ACME-#>>", None),
         ("Left\r\nRight", None),
         ("A\rB", Some('\r')),
-        ("line one\nΕλληνικά", Some('Ε')),
+        ("line one\nΕλληνικά", if ja { None } else { Some('Ε') }),
+        ("line one\n\u{13000}", Some('\u{13000}')),
     ] {
         let hf = footer(text);
         assert_eq!(hf.first_undrawable(), refused, "{text:?}");
         let mut doc = fixture();
         let applied = add_header_footer(&mut doc, &[0], &hf, false, &cx());
         match refused {
-            Some(c) => assert_eq!(applied.unwrap_err().to_string(), undrawable_message(c), "{text:?}"),
+            Some(c) => assert_eq!(applied.unwrap_err().to_string(), expected(c), "{text:?}"),
             None => applied.unwrap(),
         }
         let wm = Watermark { text: text.into(), ..Watermark::default() };
         assert_eq!(wm.first_undrawable(), refused, "{text:?}");
         let applied = add_watermark(&mut fixture(), &[0], &wm, false);
-        assert_eq!(applied.err().map(|e| e.to_string()), refused.map(undrawable_message), "{text:?}");
+        assert_eq!(applied.err().map(|e| e.to_string()), refused.map(expected), "{text:?}");
     }
 }
 
@@ -6610,16 +6680,16 @@ fn thai_headers_footers_and_watermarks_are_drawn_from_the_thai_face() {
 fn page_text_the_standard_fonts_cant_draw_is_refused() {
     let mut doc = fixture();
     let before: Vec<Vec<String>> = (0..3).map(|p| streams(&reopen(&doc), p)).collect();
-    let text = AddedText { rect: [72.0, 600.0, 300.0, 700.0], text: "日本語のテキスト".into(), ..AddedText::default() };
+    let text = AddedText { rect: [72.0, 600.0, 300.0, 700.0], text: "\u{13000}\u{13001}".into(), ..AddedText::default() };
     let err = add_content(&mut doc, 0, &Content::Text(text)).unwrap_err().to_string();
-    assert!(err.contains("\"日\" (U+65E5)"), "{err}");
+    assert!(err.contains("(U+13000)"), "{err}");
     let hf = HeaderFooter {
-        text: ["Ελληνικά".into(), String::new(), String::new(), String::new(), String::new(), String::new()],
+        text: ["\u{13000}".into(), String::new(), String::new(), String::new(), String::new(), String::new()],
         ..HeaderFooter::default()
     };
-    assert!(add_header_footer(&mut doc, &[0, 1], &hf, true, &cx()).unwrap_err().to_string().contains("U+0395"));
-    let wm = Watermark { text: "机密".into(), ..Watermark::default() };
-    assert!(add_watermark(&mut doc, &[0], &wm, true).unwrap_err().to_string().contains("U+673A"));
+    assert!(add_header_footer(&mut doc, &[0, 1], &hf, true, &cx()).unwrap_err().to_string().contains("\u{13000}"));
+    let wm = Watermark { text: "\u{13001}".into(), ..Watermark::default() };
+    assert!(add_watermark(&mut doc, &[0], &wm, true).unwrap_err().to_string().contains("\u{13001}"));
     let after: Vec<Vec<String>> = (0..3).map(|p| streams(&reopen(&doc), p)).collect();
     assert_eq!(before, after, "a refused edit changes nothing");
     // Western European text, including what only WinAnsi (not Latin-1) has, still works.
@@ -6627,8 +6697,8 @@ fn page_text_the_standard_fonts_cant_draw_is_refused() {
     add_content(&mut doc, 0, &Content::Text(text.clone())).unwrap();
     // Retyping existing text is refused the same way, and the whole document is left as it was.
     let saved = write_incremental(&doc, &SaveOptions::default()).unwrap();
-    let retyped = AddedText { text: "Café 中".into(), ..text.clone() };
-    assert!(update_content(&mut doc, 0, 0, &Content::Text(retyped)).unwrap_err().to_string().contains("U+4E2D"));
+    let retyped = AddedText { text: "Café \u{13000}".into(), ..text.clone() };
+    assert!(update_content(&mut doc, 0, 0, &Content::Text(retyped)).unwrap_err().to_string().contains("U+13000"));
     assert_eq!(write_incremental(&doc, &SaveOptions::default()).unwrap(), saved, "a refused update changes nothing");
     // A carriage return is checked where it would be drawn: added text splits on LF only, so
     // CRLF would leave a `?`; headers and watermarks split CRLF into lines, but not a lone CR.
@@ -6645,13 +6715,13 @@ fn page_text_the_standard_fonts_cant_draw_is_refused() {
     let arabic = |text: &str| AddedText { rect: [72.0, 600.0, 300.0, 700.0], text: text.into(), ..AddedText::default() };
     // U+061C is in the Arabic block but is a direction mark that's dropped, not shaped: it never
     // makes text drawable, nor (with the face) undrawable.
-    assert!(add_content(&mut doc, 0, &Content::Text(arabic("\u{061C}中"))).is_err());
+    assert!(add_content(&mut doc, 0, &Content::Text(arabic("\u{061C}\u{13000}"))).is_err());
     if pdfcraft_fonts::arabic_has('م') {
         add_content(&mut doc, 0, &Content::Text(arabic("مرحبا Hello"))).unwrap();
         add_content(&mut doc, 0, &Content::Text(arabic("\u{061C}Hello"))).unwrap();
-        for text in ["مرحبا 中", "\u{061C}中"] {
+        for text in ["مرحبا \u{13000}", "\u{061C}\u{13000}"] {
             let err = add_content(&mut doc, 0, &Content::Text(arabic(text))).unwrap_err().to_string();
-            assert!(err.contains("U+4E2D"), "{text:?}: {err}");
+            assert!(err.contains("U+13000"), "{text:?}: {err}");
         }
     } else {
         // #403's own refusal says what's missing; the Add-text editor still keeps the draft.
@@ -6662,8 +6732,8 @@ fn page_text_the_standard_fonts_cant_draw_is_refused() {
         // the standard font would write as `?`.
         let n = list_added(&doc).iter().filter(|a| a.page == 0).count();
         add_content(&mut doc, 0, &Content::Text(arabic("x"))).unwrap();
-        let err = update_content(&mut doc, 0, n, &Content::Text(arabic("ب中"))).unwrap_err().to_string();
-        assert!(err.contains("U+4E2D"), "{err}");
+        let err = update_content(&mut doc, 0, n, &Content::Text(arabic("ب\u{13000}"))).unwrap_err().to_string();
+        assert!(err.contains("U+13000"), "{err}");
         update_content(&mut doc, 0, n, &Content::Text(arabic("ب"))).unwrap();
     }
 }
@@ -7155,7 +7225,7 @@ fn added_thai_text_wraps_clusters_and_survives_reopen() {
     assert_eq!(super::added::lines(&narrow), ["กิ่", "กิ่", "กิ่"]);
     update_content(&mut doc, 0, 0, &Content::Text(AddedText { text: "แก้ไข น้ำ".into(), ..t.clone() })).unwrap();
     assert!(!own(&doc, 0).is_empty());
-    let bad = Content::Text(AddedText { text: "ไทย 日".into(), ..t });
+    let bad = Content::Text(AddedText { text: "ไทย \u{13000}".into(), ..t });
     let before = list_added(&doc);
     assert!(update_content(&mut doc, 0, 0, &bad).is_err());
     assert_eq!(list_added(&doc), before);

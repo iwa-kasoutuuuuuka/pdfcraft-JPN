@@ -105,7 +105,24 @@ fn merge(drawn: &[Drawn], text: String) -> Option<Drawn> {
         (s0, s1) = (s0.min(along(p)), s1.max(along(p)));
         (t0, t1) = (t0.min(across(p)), t1.max(across(p)));
     }
-    let one_line = drawn.iter().all(|d| compatible(u, d.1)) && t1 - t0 <= 2.0 * height.abs();
+    // pdfcraft-JPN: glyphs stacked one under another (taller than wide, by more than a glyph) are
+    // a vertical column even when only two of them fit the one-line tolerance.
+    // Each glyph sits right under the one before it, centred on the same column: text that only
+    // happens to span two lines (a gap between them) keeps its glyphs.
+    let centre = |d: &Drawn| {
+        let q = &d.2.quad;
+        let (x, y) = ((q[0][0] + q[2][0]) as f64 / 2.0, (q[0][1] + q[2][1]) as f64 / 2.0);
+        (x * u[0] + y * u[1], x * n[0] + y * n[1])
+    };
+    let adjacent = drawn.windows(2).all(|w| {
+        let ((a_s, a_t), (b_s, b_t)) = (centre(&w[0]), centre(&w[1]));
+        (b_s - a_s).abs() <= 0.5 * height.abs() && b_t - a_t > 0.0 && b_t - a_t <= 1.4 * height.abs()
+    });
+    let stacked = drawn.len() >= 2 && adjacent && t1 - t0 > 1.5 * height.abs() && t1 - t0 > s1 - s0;
+    let one_line = !stacked && drawn.iter().all(|d| compatible(u, d.1)) && t1 - t0 <= 2.0 * height.abs();
+    if stacked && s0.is_finite() && s1.is_finite() && t0.is_finite() && t1.is_finite() {
+        return merge_column(drawn, text, u, n, height.abs(), s1 - s0);
+    }
     if !(one_line && s0.is_finite() && s1.is_finite() && t0.is_finite() && t1.is_finite()) {
         return None;
     }
@@ -117,6 +134,39 @@ fn merge(drawn: &[Drawn], text: String) -> Option<Drawn> {
         [r[0].min(p[0]), r[1].min(p[1]), r[2].max(p[0]), r[3].max(p[1])]
     });
     Some((quarter, u, TextGlyph { text, rect, quad, direction: first.2.direction }))
+}
+
+/// pdfcraft-JPN: an `/ActualText` replacement whose glyphs stand one under another as a vertical
+/// column (縦書き drawn with upright glyphs, each placed on its own, plus words set sideways down
+/// the column), read as one glyph running down the column, `n` from the first glyph's writing
+/// direction `u`, so line layout orders such columns top to bottom and right to left like WMode 1
+/// text. `height` is the first glyph's height and `wide` how far the glyphs spread along `u`: a
+/// column is no wider than two glyphs. `None` for anything else.
+fn merge_column(drawn: &[Drawn], text: String, u: [f64; 2], n: [f64; 2], height: f64, wide: f64) -> Option<Drawn> {
+    // Upright glyphs run along `u`; sideways ones already run down the column, along `n`.
+    if drawn.len() < 2 || wide > 2.0 * height || !drawn.iter().all(|d| compatible(u, d.1) || compatible(n, d.1)) {
+        return None;
+    }
+    let u2 = n;
+    let n2 = [-u2[1], u2[0]];
+    let along = |p: &[f32; 2]| f64::from(p[0]) * u2[0] + f64::from(p[1]) * u2[1];
+    let across = |p: &[f32; 2]| f64::from(p[0]) * n2[0] + f64::from(p[1]) * n2[1];
+    let (mut s0, mut s1, mut t0, mut t1) = (f64::INFINITY, f64::NEG_INFINITY, f64::INFINITY, f64::NEG_INFINITY);
+    for p in drawn.iter().flat_map(|d| d.2.quad.iter()) {
+        (s0, s1) = (s0.min(along(p)), s1.max(along(p)));
+        (t0, t1) = (t0.min(across(p)), t1.max(across(p)));
+    }
+    if !(s0.is_finite() && s1.is_finite() && t0.is_finite() && t1.is_finite()) {
+        return None;
+    }
+    // The next column lies along `n2`: that edge (the larger `across`) comes first.
+    let point = |s: f64, t: f64| [(s * u2[0] + t * n2[0]) as f32, (s * u2[1] + t * n2[1]) as f32];
+    let quad = [point(s0, t1), point(s1, t1), point(s1, t0), point(s0, t0)];
+    let rect = quad.iter().fold([f32::INFINITY, f32::INFINITY, f32::NEG_INFINITY, f32::NEG_INFINITY], |r, p| {
+        [r[0].min(p[0]), r[1].min(p[1]), r[2].max(p[0]), r[3].max(p[1])]
+    });
+    let direction = [u2[0] as f32, u2[1] as f32];
+    Some((quarter_turn(u2[0], u2[1]), u2, TextGlyph { text, rect, quad, direction }))
 }
 
 /// The widest or tallest box (view-space points) a glyph, or the paint standing in for one, may
