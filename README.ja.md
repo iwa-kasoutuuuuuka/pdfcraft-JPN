@@ -211,7 +211,7 @@ $env:CRAFT_FONTS_DIR = "$PWD\craft-fonts"
 pwsh packaging/windows/package.ps1 -Arch x64
 ```
 
-`pdfcraft-<version>-windows-x64.msi`(インストーラー)と `…-portable.zip`(展開して使う版)ができます。大きさは元の PdfCraft とほぼ同じ、インストーラーで約 95 MB です。大部分は埋め込みフォント(日本語・各国語で約 44 MB、簡体字中国語で約 13 MB)です。
+`pdfcraft-<version>-windows-x64.msi`(インストーラー)と `…-portable.zip`(展開して使う版)ができます。大きさは元の PdfCraft とほぼ同じです。実測(Windows x64 の release ビルド)では、アプリ本体 `pdfcraft.exe` が 135 MB、CLI `pdfcraft-cli.exe` が 94 MB、2 つを zip にまとめると 103 MB でした。大部分は埋め込みフォント(日本語・各国語で約 44 MB、簡体字中国語で約 13 MB)で、アプリと CLI の両方に入っています。AI エージェントから使うだけなら、CLI だけを配れば足ります。
 
 ### 自動更新について
 
