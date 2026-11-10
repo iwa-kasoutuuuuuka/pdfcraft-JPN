@@ -1,5 +1,6 @@
+use super::layout::ruby;
 use super::layout::{
-    Piece, arabic_error, hebrew_error, is_arabic, is_hebrew, is_thai, latin_width, norm, shaped_layout, text_rect, thai_error, wrapped,
+    Piece, arabic_error, hebrew_error, is_arabic, is_hebrew, is_shaped, latin_width, norm, shaped_layout, text_rect, thai_error, wrapped,
 };
 use super::types::{AddedText, Align, Family, Ink};
 use super::{
@@ -61,28 +62,34 @@ pub(super) fn draw_laid_shaped(
 ) -> Result<(), EditError> {
     let r = text_rect(t);
     let latin = font_name(t.family.base_font(t.bold, t.italic));
-    let shaped =
-        ShapedFonts::new(shaped_text::clusters(laid.iter().map(|(_, _, _, pieces, _)| pieces.as_slice())), outline, taken, fonts, "PCAr", &mut |o| {
-            Object::Ref(doc.add(o))
-        })
-        .map_err(|(e, c)| match c.script {
-            ShapedScript::Arabic => arabic_error(e, &c.text),
-            ShapedScript::Hebrew => hebrew_error(e, &c.text),
-            ShapedScript::Thai => thai_error(e, &c.text),
-        })?;
+    // pdfcraft-JPN: the ruby of each line (none unless the text has 《…》 markup).
+    let marks =
+        laid.iter().map(|(line, ..)| if ruby::has_ruby(line) { ruby::line_marks(t, line) } else { Ok(Vec::new()) }).collect::<Result<Vec<_>, _>>()?;
+    let clusters = shaped_text::clusters(laid.iter().map(|(_, _, _, pieces, _)| pieces.as_slice()))
+        .chain(marks.iter().flatten().flat_map(|m| m.clusters.iter()));
+    let shaped = ShapedFonts::new(clusters, outline, taken, fonts, "PCAr", &mut |o| Object::Ref(doc.add(o))).map_err(|(e, c)| match c.script {
+        ShapedScript::Arabic => arabic_error(e, &c.text),
+        ShapedScript::Hebrew => hebrew_error(e, &c.text),
+        ShapedScript::Thai | ShapedScript::Japanese => thai_error(e, &c.text),
+    })?;
     out.extend(format!("BT {}\n", t.fill_op()).bytes());
     if t.char_spacing != 0.0 {
         out.extend(format!("{} Tc\n", n(t.char_spacing)).bytes());
     }
     let paragraphs: Vec<usize> = laid.iter().map(|(_, _, p, ..)| *p).collect();
+    // The extra room above each line that has ruby, summed down the item.
+    let mut lead = 0.0;
     for (i, (line, rtl, _, pieces, w)) in laid.iter().enumerate() {
+        lead += ruby::lead(t, line);
+        let line_marks = marks.get(i).map(Vec::as_slice).unwrap_or_default();
+        let line = &ruby::visible(line);
         // Shaped glyphs are painted in visual order. Keep the original line's typing order
         // explicitly, including marks, ligatures, digits and mixed-script punctuation.
         let logical: String = line.encode_utf16().map(|u| format!("{u:04X}")).collect();
         out.extend(format!("/Span <</ActualText <FEFF{logical}>>> BDC\n").bytes());
         let spaces = line.matches(' ').count();
         let (x, tw) = placed(t, r, &paragraphs, i, *w, spaces, *rtl);
-        let y = r[3] - (i as f64 * 1.2 + 0.95) * t.size;
+        let y = r[3] - (i as f64 * 1.2 + 0.95) * t.size - lead;
         let mut pen = x;
         let mut current = None;
         for piece in pieces {
@@ -98,6 +105,15 @@ pub(super) fn draw_laid_shaped(
             }
         }
         out.extend_from_slice(b"EMC\n");
+        if !line_marks.is_empty() {
+            // Ruby is no part of the text: a span of its own that stands for none.
+            out.extend_from_slice(b"/Span <</ActualText <FEFF>>> BDC\n");
+            for m in line_marks {
+                let at = x + m.x + (m.width - m.w) / 2.0;
+                shaped.show(out, &m.clusters, at, y + 0.97 * t.size, t.size / 2.0, 0.0, 0.0, &mut None);
+            }
+            out.extend_from_slice(b"EMC\n");
+        }
     }
     out.extend_from_slice(b"ET\n");
     Ok(())
@@ -132,8 +148,15 @@ pub(super) fn draw(doc: &mut Document, c: &Content, view: [f64; 6], taken: &Dict
             }
             let mut fonts = Dict::new();
             fonts.set(name.clone().into_bytes(), Object::Dict(font));
+            // pdfcraft-JPN: vertical writing.
+            if t.vertical {
+                super::vertical::draw_vertical(doc, t, taken, &mut fonts, &mut out, &name)?;
+                res.set(b"Font".to_vec(), Object::Dict(fonts));
+                out.extend_from_slice(b"Q\n");
+                return Ok((out, res));
+            }
             let face_or_new = |has: fn(char) -> bool, face: bool| t.text.chars().any(has) && (face || !existing);
-            if t.text.chars().any(is_thai)
+            if t.text.chars().any(is_shaped)
                 || face_or_new(is_arabic, pdfcraft_fonts::document_arabic_font().is_some())
                 || face_or_new(is_hebrew, pdfcraft_fonts::document_hebrew_font(false).is_some())
             {
@@ -220,6 +243,9 @@ pub(super) fn params(c: &Content) -> Dict {
             d.set(b"Rect".to_vec(), arr(&text_rect(t)));
             if t.char_spacing != 0.0 {
                 d.set(b"CharSpacing".to_vec(), Object::Real(t.char_spacing));
+            }
+            if t.vertical {
+                d.set(b"Vertical".to_vec(), Object::Bool(true));
             }
         }
         Content::Image(i) => {

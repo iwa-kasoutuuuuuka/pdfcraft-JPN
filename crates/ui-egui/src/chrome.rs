@@ -890,7 +890,7 @@ fn page_position(current: usize, count: usize, label: &str) -> String {
 
 /// The rail's Page display menu: the layouts and the cover page (also View ▸ Page display).
 /// Returns the command a click asks for, for the caller to run.
-fn page_display_menu(ui: &mut egui::Ui, view: &DocView) -> Option<&'static str> {
+fn page_display_menu(ui: &mut egui::Ui, view: &mut DocView) -> Option<&'static str> {
     let t = Tokens::get(ui.ctx());
     ui.label(egui::RichText::new(tl!("Page display")).color(t.text_faint).small());
     let mut picked = None;
@@ -912,6 +912,10 @@ fn page_display_menu(ui: &mut egui::Ui, view: &DocView) -> Option<&'static str> 
     let mut cover = view.cover;
     if ui.add_enabled(view.cover_applies(), widgets::checkbox(&mut cover, tl!("Show cover page in two-page view"))).changed() {
         picked = Some("view.layout.cover");
+    }
+    let mut rtl = view.right_to_left;
+    if ui.add(widgets::checkbox(&mut rtl, tl!("Right-to-left page order"))).changed() {
+        view.set_right_to_left(rtl);
     }
     if picked.is_some() {
         ui.close();

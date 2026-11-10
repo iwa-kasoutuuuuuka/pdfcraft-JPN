@@ -382,6 +382,7 @@ fn zoom_shortcuts(view: &mut DocView, pressed: &impl Fn(egui::KeyboardShortcut) 
 /// The document view's keyboard shortcuts: find, rotation, zoom (or the page grid's size),
 /// history, Escape, and the paging and scrolling keys. An open form field keeps the paging
 /// and scrolling keys for itself.
+#[allow(clippy::cognitive_complexity)]
 pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_speed::ScrollSpeed) {
     use egui::{Key, KeyboardShortcut, Modifiers};
     if ctx.input_mut(|i| i.consume_shortcut(&KeyboardShortcut::new(Modifiers::COMMAND, Key::F))) {
@@ -489,7 +490,8 @@ pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_s
     if key(Key::ArrowRight) && sideways(view, true) {
         view.key_side += line;
     } else if key(Key::ArrowRight) || (key(Key::PageDown) && (command || !scrolls)) {
-        view.step_page(true);
+        // Bound on the right edge, → turns back a page, as in a Japanese book.
+        view.step_page(if key(Key::ArrowRight) { arrow_turns_forward(view.right_to_left, true) } else { true });
         if key(Key::ArrowRight) {
             at_edge(view, true);
         }
@@ -497,7 +499,7 @@ pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_s
     if key(Key::ArrowLeft) && sideways(view, false) {
         view.key_side -= line;
     } else if key(Key::ArrowLeft) || (key(Key::PageUp) && (command || !scrolls)) {
-        view.step_page(false);
+        view.step_page(if key(Key::ArrowLeft) { arrow_turns_forward(view.right_to_left, false) } else { false });
         if key(Key::ArrowLeft) {
             at_edge(view, false);
         }
@@ -535,6 +537,12 @@ pub fn shortcuts(view: &mut DocView, ctx: &egui::Context, speed: crate::scroll_s
     }
 }
 
+/// Whether the → (`right`) or ← arrow turns to the next page: → does, except in a document bound
+/// on the right edge, where ← does.
+fn arrow_turns_forward(right_to_left: bool, right: bool) -> bool {
+    right != right_to_left
+}
+
 /// How far ↓ / ↑ scroll at Normal speed (Scroll speed halves or doubles it). Page Down / Page Up
 /// keep this much of the previous screen in view.
 const KEY_SCROLL_LINE: f32 = 40.0;
@@ -546,7 +554,13 @@ fn sliver(pixels_per_point: f32) -> f32 {
 
 #[cfg(test)]
 mod tests {
-    use super::sliver;
+    use super::{arrow_turns_forward, sliver};
+
+    #[test]
+    fn right_edge_binding_swaps_the_page_turning_arrows() {
+        assert!(arrow_turns_forward(false, true) && !arrow_turns_forward(false, false));
+        assert!(!arrow_turns_forward(true, true) && arrow_turns_forward(true, false));
+    }
 
     #[test]
     fn a_sliver_is_one_physical_pixel() {

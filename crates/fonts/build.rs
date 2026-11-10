@@ -19,7 +19,14 @@ fn main() {
     println!("cargo::rerun-if-env-changed=CRAFT_FONTS_REQUIRED");
     let mut src = String::from("pub static CRAFT_FONTS: &[CraftFont] = &[\n");
     let required = std::env::var_os("CRAFT_FONTS_REQUIRED").is_some();
-    if let Some(dir) = std::env::var_os("CRAFT_FONTS_DIR").map(PathBuf::from) {
+    // pdfcraft-JPN: without CRAFT_FONTS_DIR, use a `craft-fonts` checkout at the repository root
+    // (where CI puts it, and `.gitignore` ignores it), so the Japanese faces are always embedded.
+    let local = PathBuf::from(env!("CARGO_MANIFEST_DIR")).parent().and_then(|p| p.parent()).map(|root| root.join("craft-fonts"));
+    if let Some(l) = &local {
+        println!("cargo::rerun-if-changed={}", l.join("fonts/manifest.txt").display());
+    }
+    let local = local.filter(|d| d.join("fonts/manifest.txt").is_file());
+    if let Some(dir) = std::env::var_os("CRAFT_FONTS_DIR").filter(|d| !d.is_empty()).map(PathBuf::from).or(local) {
         match craft_fonts(&dir, required) {
             Ok(entries) => src.push_str(&entries),
             Err(e) if required => println!("cargo::error=CRAFT_FONTS_DIR={}: {e}", dir.display()),
@@ -115,6 +122,12 @@ fn manifest(dir: &std::path::Path, manifest: &std::path::Path, wasm: bool, stric
         }
         has_hans |= cjk_scripts::has_script_tag(scripts, "Hans");
         let path = dir.join(file).canonicalize().map_err(|e| format!("{file}: {e}"))?;
+        // pdfcraft-JPN: a manifest entry may only name a file inside the checkout, so a hostile
+        // checkout can't bake other local files into the binary.
+        let root = dir.canonicalize().map_err(|e| format!("{}: {e}", dir.display()))?;
+        if !path.starts_with(&root) {
+            return Err(format!("{file}: outside the craft-fonts checkout"));
+        }
         println!("cargo::rerun-if-changed={}", path.display());
         let scripts: Vec<String> = scripts.split(',').map(|s| format!("{:?}", s.trim())).collect();
         let _ = writeln!(

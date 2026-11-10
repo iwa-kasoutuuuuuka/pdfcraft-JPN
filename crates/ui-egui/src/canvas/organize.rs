@@ -185,8 +185,25 @@ fn organize_toolbar(view: &mut DocView, info: &DocInfo, editable: bool, dirty: b
 /// toggles, ⇧-click extends; double-click opens the page.
 /// The gap (0 = before the first page, n = after the last) the pointer points at in the grid.
 pub(crate) fn drop_gap(cells: &[(usize, Rect)], p: Pos2) -> Option<usize> {
+    drop_gap_dir(cells, p, false)
+}
+
+/// [`drop_gap`] for a grid whose rows run right to left: the left half of a cell is its far side.
+pub(crate) fn drop_gap_dir(cells: &[(usize, Rect)], p: Pos2, rtl: bool) -> Option<usize> {
     let (i, r) = cells.iter().min_by(|(_, a), (_, b)| a.distance_sq_to_pos(p).total_cmp(&b.distance_sq_to_pos(p)))?;
-    Some(if p.x < r.center().x { *i } else { i + 1 })
+    let before = (p.x < r.center().x) != rtl;
+    Some(if before { *i } else { i + 1 })
+}
+
+/// The column page `i` sits in; rows run right to left when `rtl`.
+fn grid_col(i: usize, cols: usize, rtl: bool) -> usize {
+    let col = i % cols;
+    if rtl { cols - 1 - col } else { col }
+}
+
+/// The x of the edge a page's "before" gap sits on (`end`: after the last page).
+fn gap_edge_x(r: &Rect, end: bool, rtl: bool) -> f32 {
+    if end != rtl { r.right() } else { r.left() }
 }
 
 /// Ctrl (Option on macOS) held when a page drag drops copies the dragged pages into the gap
@@ -267,6 +284,8 @@ fn request_sharper(
     }
 }
 
+// The right-to-left grid (pdfcraft-JPN) adds a few branches to an already long layout pass.
+#[allow(clippy::cognitive_complexity)]
 pub(super) fn organize_grid(
     view: &mut DocView,
     doc: &pdfcraft_engine::Document,
@@ -277,6 +296,7 @@ pub(super) fn organize_grid(
     t: &Tokens,
 ) {
     let info = &doc.info;
+    let rtl = view.right_to_left;
     let editable = doc.allows_assembly();
     let dirty = doc.dirty;
     let ppp = ui.ctx().pixels_per_point();
@@ -316,7 +336,7 @@ pub(super) fn organize_grid(
         // so its cell is computed rather than found.
         if let Some(page) = reveal.filter(|p| *p < info.pages.len()) {
             let row = page / cols;
-            let col = page % cols;
+            let col = grid_col(page, cols, rtl);
             let c = Rect::from_min_size(pos2(grid.left() + left + col as f32 * cell.x, grid.top() + row as f32 * cell.y), cell);
             ui.scroll_to_rect_animation(c, Some(egui::Align::Center), egui::style::ScrollAnimation::none());
         }
@@ -325,7 +345,7 @@ pub(super) fn organize_grid(
             for col in 0..cols {
                 let i = row * cols + col;
                 let Some(p) = info.pages.get(i) else { break };
-                let c = Rect::from_min_size(pos2(row_rect.left() + left + col as f32 * cell.x, row_rect.top()), cell);
+                let c = Rect::from_min_size(pos2(row_rect.left() + left + grid_col(i, cols, rtl) as f32 * cell.x, row_rect.top()), cell);
                 view.need_thumbnail(i, c.intersects(ui.clip_rect()));
                 let resp = ui.interact(c, ui.scope_id().with(("org", i)), if editable { Sense::click_and_drag() } else { Sense::click() });
                 cells.push((i, c));
@@ -461,13 +481,13 @@ pub(super) fn organize_grid(
                     .get(*i)
                     .map(|p| crate::i18n::fmt(tl!("Insert a file before page {label}"), &[("label", &p.label)]))
                     .unwrap_or_default();
-                if gap_button(ui, *i, pos2(c.left(), mid(c)), cell.y - 88.0, label, t) {
+                if gap_button(ui, *i, pos2(gap_edge_x(c, false, rtl), mid(c)), cell.y - 88.0, label, t) {
                     view.pending_action = Some(ViewAction::InsertFromFileAt(*i));
                 }
             }
             if let Some((i, c)) = cells.last()
                 && i + 1 == info.pages.len()
-                && gap_button(ui, i + 1, pos2(c.right(), mid(c)), cell.y - 88.0, tl!("Insert a file at the end").to_string(), t)
+                && gap_button(ui, i + 1, pos2(gap_edge_x(c, true, rtl), mid(c)), cell.y - 88.0, tl!("Insert a file at the end").to_string(), t)
             {
                 view.pending_action = Some(ViewAction::InsertFromFileAt(i + 1));
             }
@@ -476,10 +496,10 @@ pub(super) fn organize_grid(
         if let (Some(pages), Some(p)) = (view.org_drag.clone(), ui.input(|i| i.pointer.hover_pos())) {
             // Ctrl (Option on macOS) held over the drop copies the pages; see #2997.
             let copying = copy_modifier(ui.ctx(), &ui.input(|i| i.modifiers));
-            if let Some(gap) = drop_gap(&cells, p) {
+            if let Some(gap) = drop_gap_dir(&cells, p, rtl) {
                 let x = match cells.iter().find(|(i, _)| *i == gap) {
-                    Some((_, r)) => r.left() + 3.0,
-                    None => cells.last().map_or(0.0, |(_, r)| r.right() - 3.0),
+                    Some((_, r)) => gap_edge_x(r, false, rtl) + if rtl { -3.0 } else { 3.0 },
+                    None => cells.last().map_or(0.0, |(_, r)| gap_edge_x(r, true, rtl) + if rtl { 3.0 } else { -3.0 }),
                 };
                 let row = cells.iter().find(|(i, _)| *i == gap).or(cells.last()).map(|(_, r)| r.y_range()).unwrap_or(egui::Rangef::new(0.0, 0.0));
                 ui.painter().line_segment([pos2(x, row.min + 10.0), pos2(x, row.max - 10.0)], Stroke::new(3.0, t.accent));
@@ -503,7 +523,7 @@ pub(super) fn organize_grid(
             }
             if drop {
                 view.org_drag = None;
-                if let Some(gap) = drop_gap(&cells, p) {
+                if let Some(gap) = drop_gap_dir(&cells, p, rtl) {
                     if copying {
                         // The copies land at the gap as it is: nothing leaves its place.
                         view.pending_edit = Some(Edit::DuplicatePages { pages: pages.clone(), at: Some(gap) });
@@ -528,13 +548,14 @@ pub(super) fn organize_grid(
     // Files dragged in from outside go to the gap under the pointer. Some platforms don't say
     // where the pointer is until the files are dropped; then the whole grid is the target.
     let pointer = ui.input(|i| i.pointer.hover_pos()).filter(|p| viewport.contains(*p));
-    view.grid_gap = pointer.filter(|_| editable && view.org_drag.is_none()).and_then(|p| drop_gap(&cells, p));
+    view.grid_gap = pointer.filter(|_| editable && view.org_drag.is_none()).and_then(|p| drop_gap_dir(&cells, p, rtl));
     if editable && ui.input(|i| !i.raw.hovered_files.is_empty()) {
         let painter = ui.painter().with_clip_rect(viewport);
         painter.rect_stroke(viewport.shrink(2.0), CornerRadius::same(6), Stroke::new(2.0, t.accent), egui::StrokeKind::Inside);
         if let Some(gap) = view.grid_gap {
-            let at = cells.iter().find(|(i, _)| *i == gap).map(|(_, r)| (r.left() + 3.0, r.y_range()));
-            if let Some((x, row)) = at.or(cells.last().map(|(_, r)| (r.right() - 3.0, r.y_range()))) {
+            let at = cells.iter().find(|(i, _)| *i == gap).map(|(_, r)| (gap_edge_x(r, false, rtl) + if rtl { -3.0 } else { 3.0 }, r.y_range()));
+            let end = cells.last().map(|(_, r)| (gap_edge_x(r, true, rtl) + if rtl { 3.0 } else { -3.0 }, r.y_range()));
+            if let Some((x, row)) = at.or(end) {
                 painter.line_segment([pos2(x, row.min + 10.0), pos2(x, row.max - 10.0)], Stroke::new(3.0, t.accent));
             }
         }
@@ -576,5 +597,45 @@ pub(super) fn organize_grid(
     if let Some(p) = open_page {
         view.organize = false;
         view.go_to_page(p);
+    }
+}
+
+#[cfg(test)]
+mod rtl_tests {
+    use super::*;
+
+    /// Two rows of three 100x100 cells; pages 0..5, mirrored when `rtl`.
+    fn cells(rtl: bool) -> Vec<(usize, Rect)> {
+        (0..5).map(|i| (i, Rect::from_min_size(pos2(grid_col(i, 3, rtl) as f32 * 100.0, (i / 3) as f32 * 100.0), vec2(100.0, 100.0)))).collect()
+    }
+
+    #[test]
+    fn grid_columns_mirror_in_right_to_left() {
+        let x = |rtl| cells(rtl).iter().map(|(_, r)| r.left()).collect::<Vec<_>>();
+        assert_eq!(x(false), [0.0, 100.0, 200.0, 0.0, 100.0]);
+        assert_eq!(x(true), [200.0, 100.0, 0.0, 200.0, 100.0]);
+    }
+
+    #[test]
+    fn drop_gap_follows_the_reading_direction() {
+        let ltr = cells(false);
+        assert_eq!(drop_gap_dir(&ltr, pos2(10.0, 10.0), false), Some(0));
+        assert_eq!(drop_gap_dir(&ltr, pos2(90.0, 10.0), false), Some(1));
+        assert_eq!(drop_gap(&ltr, pos2(90.0, 10.0)), Some(1));
+        let rtl = cells(true);
+        // Page 0 is the rightmost cell: its right half is before it, its left half after it.
+        assert_eq!(drop_gap_dir(&rtl, pos2(290.0, 10.0), true), Some(0));
+        assert_eq!(drop_gap_dir(&rtl, pos2(210.0, 10.0), true), Some(1));
+        // Past the last page (column 1 of row 2): the left half is the end.
+        assert_eq!(drop_gap_dir(&rtl, pos2(110.0, 150.0), true), Some(5));
+    }
+
+    #[test]
+    fn gap_edges_sit_on_the_reading_side() {
+        let r = Rect::from_min_size(pos2(0.0, 0.0), vec2(100.0, 100.0));
+        assert_eq!(gap_edge_x(&r, false, false), 0.0);
+        assert_eq!(gap_edge_x(&r, true, false), 100.0);
+        assert_eq!(gap_edge_x(&r, false, true), 100.0);
+        assert_eq!(gap_edge_x(&r, true, true), 0.0);
     }
 }

@@ -168,6 +168,11 @@ pub struct AddedText {
     /// Paragraphs (lines typed with Enter) aligned other than [`AddedText::align`], by index;
     /// `None` and paragraphs past the end follow `align` ([`crate::paragraph_align`]).
     pub aligns: Vec<Option<Align>>,
+    /// pdfcraft-JPN: vertical writing (縦書き). Columns run top to bottom, the first at the
+    /// box's right edge and the next ones to its left; the box's height is the column length and
+    /// its width follows the text. Japanese takes the face's vertical forms; other characters are
+    /// set sideways, turned 90° clockwise, as in Japanese typesetting.
+    pub vertical: bool,
 }
 
 impl AddedText {
@@ -218,6 +223,7 @@ impl AddedText {
 impl Default for AddedText {
     fn default() -> Self {
         AddedText {
+            vertical: false,
             rect: [0.0; 4],
             text: String::new(),
             family: Family::Helvetica,

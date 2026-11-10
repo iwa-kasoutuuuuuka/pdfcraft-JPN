@@ -412,7 +412,8 @@ fn detect_system_lang() -> Lang {
     if let Some(l) = windows_ui_language().as_deref().and_then(first_supported) {
         return l;
     }
-    Lang::EN
+    // pdfcraft-JPN: Japanese when the system language can't be determined.
+    Lang::from_code("ja").unwrap_or(Lang::EN)
 }
 
 /// The language the locale variables name, `LC_ALL` first, then `LC_MESSAGES`, then `LANG`;

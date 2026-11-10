@@ -428,7 +428,8 @@ fn history_labels_keep_captured_names() {
     needs_catalogs!();
     set_current(JA());
     assert_eq!(action_label("Insert pages from Save {e}.pdf"), "Save {e}.pdf からページを挿入");
-    assert_eq!(command_label("Undo Insert pages from Save {e}.pdf"), "取り消し Save {e}.pdf からページを挿入");
+    // pdfcraft-JPN: the catalog has both "Undo {action}" and "Redo {action}", so the template is used.
+    assert_eq!(command_label("Undo Insert pages from Save {e}.pdf"), "元に戻す: Save {e}.pdf からページを挿入");
     assert_eq!(action_label("Untranslated custom action"), "Untranslated custom action");
     assert_eq!(menu_label("file.open", "Open…"), "開く…");
     set_current(Lang::EN);
@@ -1538,6 +1539,30 @@ fn translation_gaps_report() {
     }
     report.push_str(&unused_id_rows());
     println!("{REPORT_START}\n{report}{REPORT_END}");
+}
+
+/// pdfcraft-JPN: write every English string Japanese has no translation for to the file named by
+/// `PDFCRAFT_I18N_DUMP`, one `context<TAB>source` row each (escaped as in the catalogs), so the
+/// gaps can be filled in `i18n/locales/ja/pdfcraft.tsv`. Run with `--ignored`.
+#[test]
+#[ignore = "writes a file; run on demand"]
+fn dump_missing_japanese() {
+    let Some(path) = std::env::var_os("PDFCRAFT_I18N_DUMP") else { return };
+    needs_catalogs!();
+    let lang = Lang::from_code("ja").expect("ja catalog embedded");
+    let found = |context: &str, source: &str| lang.i18n().get(lang.lang, context, source).is_some();
+    let esc = |s: &str| s.replace('\\', "\\\\").replace('\t', "\\t").replace('\n', "\\n");
+    let mut out = String::new();
+    for (context, source) in english_keys() {
+        let missing = match context.as_str() {
+            "" => !found("", &source),
+            c => !found(c, &source) && (c == "@plural" || !found("", &source)),
+        };
+        if missing {
+            out.push_str(&format!("{}\t{}\n", esc(&context), esc(&source)));
+        }
+    }
+    std::fs::write(path, out).unwrap();
 }
 
 /// The lines `cargo xtask i18n-report` prints from the test output lie between these.

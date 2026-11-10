@@ -158,3 +158,19 @@ resources and their templates are preserved.
 Unknown top-level argument keys are refused with JSON-RPC `-32602` (invalid params) instead of
 being ignored, so a misspelled argument is reported rather than silently dropped. Clients that
 sent extra keys before get an error now.
+
+## One-command setup
+
+`pdfcraft-cli mcp install` writes the server entry into an agent's config (merging with what is
+there, backing the old file up to `<file>.pdfcraft-bak`, never writing a file it cannot parse):
+
+```sh
+pdfcraft-cli mcp install --target claude-code --root /work/project          # ~/.claude.json
+pdfcraft-cli mcp install --target antigravity --root /work/project --dry-run # print, write nothing
+pdfcraft-cli mcp uninstall --target claude-code
+```
+
+Targets: `claude-code` (default), `antigravity`, `claude-desktop`, `cursor` (repeatable). Options:
+`--scope user|project` (project: `.mcp.json` / `.cursor/mcp.json`), `--root DIR` (required for user
+scope), `--compact`, `--name`, `--exe`, `--dry-run`, `--force`. See also the Japanese
+[agent guide](agents.ja.md).

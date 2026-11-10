@@ -9,10 +9,13 @@
 
 
 <p align="center">
-  <img src="assets/app-icon/hicolor/256x256/apps/ai.storyteller.pdfcraft.png" width="128" height="128" alt="PdfCraft icon: an engraved lion on a red tile">
+  <img src="assets/app-icon/hicolor/256x256/apps/ai.storyteller.pdfcraft.png" width="128" height="128" alt="PdfCraft icon: a PDF page floating above its shadow, on a red tile">
 </p>
 
 <h1 align="center">PdfCraft</h1>
+
+> [!NOTE]
+> **This is pdfcraft-JPN, a Japanese edition of PdfCraft** (full Japanese UI, Japanese/vertical text writing with ruby and tate-chu-yoko, right-to-left binding, Japanese era dates, Windows OCR, one-command MCP setup for Claude Code / Antigravity). **日本語の説明は [README.ja.md](README.ja.md) を参照してください。**
 
 <p align="center">
   <b>The PDF workbench; an open-source, modern PDF reader and editor, built in pure Rust.</b><br>

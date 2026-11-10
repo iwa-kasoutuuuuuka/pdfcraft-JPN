@@ -534,6 +534,9 @@ pub struct DocView {
     pub snapshot: Option<Snapshot>,
     /// Two-page view: show the first page alone, as a cover (View ▸ Page display).
     pub cover: bool,
+    /// Right-edge binding (`/Direction /R2L`): in two-page view the first page of a spread is on
+    /// the right and ← turns to the next page.
+    pub right_to_left: bool,
     /// Previous view / Next view: pages visited before (and after, once going back).
     pub back: Vec<usize>,
     pub forward: Vec<usize>,
@@ -1053,6 +1056,7 @@ impl DocView {
             close_requested: false,
             snapshot: None,
             cover: false,
+            right_to_left: false,
             back: Vec::new(),
             forward: Vec::new(),
             goto: None,
@@ -1245,6 +1249,7 @@ impl DocView {
         fresh.snapshot = self.snapshot.clone();
         fresh.close_requested = self.close_requested;
         fresh.cover = self.cover;
+        fresh.right_to_left = self.right_to_left;
         // What the document asked to hide, and what is hidden now (F8), belong to the tab.
         fresh.interface = self.interface;
         // Still presenting, with the display to go back to on leaving.
@@ -1286,6 +1291,7 @@ impl DocView {
         v.show_page_gaps = self.show_page_gaps;
         v.rotation = self.rotation;
         v.cover = self.cover;
+        v.right_to_left = self.right_to_left;
         v.current = self.current;
         v.page_input = self.page_input.clone();
         v.highlight_fields = self.highlight_fields;

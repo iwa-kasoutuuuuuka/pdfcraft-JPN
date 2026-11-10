@@ -24,8 +24,9 @@ impl Automation {
             settings.engine = match e.trim().to_ascii_lowercase().as_str() {
                 "ocrs" => EngineChoice::Ocrs,
                 "tesseract" => EngineChoice::Tesseract,
+                "windows" | "windows-ocr" => EngineChoice::Windows,
                 "auto" | "automatic" | "ensemble" => EngineChoice::Auto,
-                other => return Err(ToolError::InvalidArgs(format!("unsupported engine {other:?} (ocrs, tesseract or auto)"))),
+                other => return Err(ToolError::InvalidArgs(format!("unsupported engine {other:?} (ocrs, tesseract, windows or auto)"))),
             };
         }
         settings.strategy = match a.opt_str("strategy")? {
@@ -529,8 +530,24 @@ impl Automation {
                 v
             })
             .collect();
-        Ok(json!({ "available": ocr::available(), "search_dirs": dirs, "languages": langs, "engines": engines }))
+        let mut status = json!({ "available": ocr::available(), "search_dirs": dirs, "languages": langs, "engines": engines });
+        status["japanese"] = japanese_status(ocr::japanese_data());
+        Ok(status)
     }
+}
+
+/// Whether tesseract's Japanese language data is installed (`None`: no usable tesseract), with
+/// a plain-sentence hint when something is missing. Language `ja` reads horizontal text (and
+/// vertical too when jpn_vert is present); `ja-vert` reads vertical columns only.
+fn japanese_status(data: Option<(bool, bool)>) -> Value {
+    let hint = match data {
+        None => "Japanese OCR needs the tesseract program with the jpn and jpn_vert language data installed.",
+        Some((true, true)) => "Japanese is ready: use language ja for horizontal text and vertical columns, or ja-vert for vertical-only pages.",
+        Some(_) => {
+            "Download the missing jpn.traineddata (horizontal) and jpn_vert.traineddata (vertical) files from the tessdata repository on GitHub and put them in tesseract's tessdata folder."
+        }
+    };
+    json!({ "jpn": data.map(|d| d.0), "jpn_vert": data.map(|d| d.1), "hint": hint })
 }
 
 /// The file name an input is written under: its own file name, or `document.pdf` when it has none.
@@ -579,5 +596,17 @@ mod shared_output_name_tests {
         let dot = shared_file_names(&targets(&["scan.pdf", "scan.pdf."]));
         assert_eq!(case.len(), if cfg!(any(windows, target_os = "macos")) { 2 } else { 0 }, "{case:?}");
         assert_eq!(dot.len(), if cfg!(windows) { 2 } else { 0 }, "{dot:?}");
+    }
+}
+
+#[cfg(test)]
+mod japanese_status_tests {
+    use super::japanese_status;
+
+    #[test]
+    fn japanese_status_names_what_is_missing() {
+        assert!(japanese_status(Some((true, false)))["hint"].as_str().unwrap().contains("jpn_vert.traineddata"));
+        assert_eq!(japanese_status(Some((true, true)))["jpn_vert"], true);
+        assert!(japanese_status(None)["jpn"].is_null());
     }
 }

@@ -2187,6 +2187,13 @@ fn finish_edits(app: &mut PdfCraftApp, dialog: Dialog, req: &mut Pending) {
     if req.apply
         && let Some(edits) = draft_changes(app)
     {
+        // The binding edge shows at once, in the document's tab.
+        if let Some((id, v)) = &app.view_draft {
+            let (id, rtl) = (*id, v.right_to_left);
+            if let Some(view) = app.views.iter_mut().find(|w| w.id == id) {
+                view.set_right_to_left(rtl);
+            }
+        }
         app.apply_edit(Edit::Batch { label: "Change document properties".into(), edits });
     }
 }

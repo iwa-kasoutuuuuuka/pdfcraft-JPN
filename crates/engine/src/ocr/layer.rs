@@ -30,6 +30,14 @@ pub(crate) fn validate_words<'a>(words: impl IntoIterator<Item = &'a PlacedWord>
     Ok(count)
 }
 
+/// Whether a recognised word is a vertical column (縦書き): two or more characters in a box
+/// clearly taller than it is wide. A single character, or a box about as wide as tall, stays
+/// horizontal.
+fn is_vertical(w: &PlacedWord) -> bool {
+    let (height, width) = (w.up[0].hypot(w.up[1]), w.across[0].hypot(w.across[1]));
+    w.text.chars().count() >= 2 && width > 0.0 && height > 1.5 * width
+}
+
 pub(crate) fn add_text(doc: &mut Document, page: usize, words: &[PlacedWord]) -> Result<(), EditError> {
     validate_words(words)?;
     // Keep the existing Latin layout, including Helvetica's proportional advance widths.
@@ -108,10 +116,28 @@ pub(crate) fn add_text(doc: &mut Document, page: usize, words: &[PlacedWord]) ->
         let mut start = 0;
         let mut run = Vec::new();
         let mut font_index = None;
+        let vertical = is_vertical(w);
         let emit = |content: &mut String, font: usize, start: usize, run: &[u8]| {
             let n = count as f64;
             let at = start as f64 / n;
             let hex: String = run.iter().map(|b| format!("{b:02X}")).collect();
+            if vertical {
+                // Vertical writing (縦書き): the glyphs run down the column from its top edge,
+                // the text turned a quarter clockwise (x axis down the box, y axis across it),
+                // so extraction, search and selection read the column top to bottom. The
+                // baseline sits 0.2 em from the column's left edge, like the horizontal case.
+                content.push_str(&format!(
+                    "/{} 1 Tf\n{} {} {} {} {} {} Tm <{hex}> Tj\n",
+                    names[font],
+                    -w.up[0] / n,
+                    -w.up[1] / n,
+                    w.across[0],
+                    w.across[1],
+                    w.origin[0] + w.up[0] * (1.0 - at) + 0.2 * w.across[0],
+                    w.origin[1] + w.up[1] * (1.0 - at) + 0.2 * w.across[1]
+                ));
+                return;
+            }
             content.push_str(&format!(
                 "/{} 1 Tf\n{} {} {} {} {} {} Tm <{hex}> Tj\n",
                 names[font],

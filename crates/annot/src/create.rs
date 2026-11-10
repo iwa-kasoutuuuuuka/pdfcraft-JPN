@@ -544,7 +544,7 @@ pub fn add_annotation(doc: &mut Document, new: &NewAnnotation, meta: &Meta) -> R
 /// fits inside the padding `pad`, as the appearance lays it out at `size`. Other text, and a box
 /// tall enough already, keep the box they were given.
 fn fit_thai_ink(tb: [f64; 4], turn: i64, text: &str, size: f64, pad: f64) -> [f64; 4] {
-    if !text.chars().any(pdfcraft_fonts::shaped_text::is_thai) {
+    if !text.chars().any(pdfcraft_fonts::shaped_text::is_shaped) {
         return tb;
     }
     let [x0, y0, x1, y1] = normalize(tb);

@@ -39,6 +39,7 @@ pub const LANGUAGE_CODES: &[(&str, &str)] = &[
     ("ru", "rus"),
     ("zh", "chi_sim"),
     ("ja", "jpn"),
+    ("ja-vert", "jpn_vert"),
     ("ko", "kor"),
     ("ar", "ara"),
     ("nl", "nld"),
@@ -55,6 +56,7 @@ pub const LANGUAGE_NAMES: &[(&str, &str)] = &[
     ("ru", "Russian"),
     ("zh", "Chinese (Simplified)"),
     ("ja", "Japanese"),
+    ("ja-vert", "Japanese (vertical)"),
     ("ko", "Korean"),
     ("ar", "Arabic"),
     ("nl", "Dutch"),
@@ -65,6 +67,26 @@ pub const LANGUAGE_NAMES: &[(&str, &str)] = &[
 pub fn language_code(code: &str) -> &'static str {
     let c = code.trim().to_ascii_lowercase();
     LANGUAGE_CODES.iter().find(|(k, _)| *k == c).map(|(_, v)| *v).unwrap_or("eng")
+}
+
+/// The `-l` value and page segmentation mode for settings language `code`, given the installed
+/// tessdata names `installed` (from `--list-langs`; empty = unknown, assume nothing extra).
+/// Built only from the allow-listed table, never from the raw code.
+///
+/// * `ja`: `jpn`, plus `jpn_vert` when that data is installed, so horizontal and vertical
+///   (tategaki) pages both read; page segmentation stays automatic.
+/// * `ja-vert`: `jpn_vert` alone with `--psm 5` (a single uniform block of vertical text). An
+///   error naming the missing data when `jpn_vert` is not installed.
+pub fn language_plan(code: &str, installed: &[String]) -> Result<(String, Option<&'static str>), OcrError> {
+    let has = |name: &str| installed.iter().any(|l| l == name);
+    match language_code(code) {
+        "jpn" if has("jpn_vert") => Ok(("jpn+jpn_vert".into(), None)),
+        "jpn_vert" if !installed.is_empty() && !has("jpn_vert") => Err(OcrError::Recognize(
+            "vertical Japanese needs the jpn_vert language data for tesseract (jpn_vert.traineddata from the tessdata repository, placed in the tessdata folder)".into(),
+        )),
+        "jpn_vert" => Ok(("jpn_vert".into(), Some("5"))),
+        other => Ok((other.into(), None)),
+    }
 }
 
 /// The user-configured program location, when valid: `$PDFCRAFT_TESSERACT` (a user
@@ -462,7 +484,8 @@ impl Recognizer for TesseractCli {
 
     /// Write the page as a PNG and read it back as TSV.
     fn recognize(&self, image: &OcrImage, options: &RecognizeOptions) -> Result<Vec<Line>, OcrError> {
-        let lang = language_code(&options.language);
+        let installed: Vec<String> = self.languages().into_iter().map(|(c, _)| c).collect();
+        let (lang, psm) = language_plan(&options.language, &installed)?;
         let png = encode_png(image)?;
         let dir = TempDir::create()?;
         let png_path = dir.path.join("page.png");
@@ -471,8 +494,14 @@ impl Recognizer for TesseractCli {
             set_private(&mut f);
             f.write_all(&png).map_err(|e| OcrError::Process(format!("writing the image failed: {e}")))?;
         }
-        // Fixed argv, no shell: tesseract <png> stdout -l <lang> tsv.
-        let tsv = self.run(&[&png_path.to_string_lossy(), "stdout", "-l", lang, "tsv"], self.timeout, self.max_output)?;
+        // Fixed argv, no shell: tesseract <png> stdout -l <lang> [--psm N] tsv.
+        let png_arg = png_path.to_string_lossy();
+        let mut argv: Vec<&str> = vec![&png_arg, "stdout", "-l", &lang];
+        if let Some(psm) = psm {
+            argv.extend(["--psm", psm]);
+        }
+        argv.push("tsv");
+        let tsv = self.run(&argv, self.timeout, self.max_output)?;
         let (lines, truncated) = parse_tsv_bounded(&tsv);
         if truncated {
             return Err(OcrError::Recognize(format!("the {MAX_WORDS}-word limit was exceeded; the incomplete reading was rejected")));
@@ -684,6 +713,27 @@ mod tests {
             let mapped = language_code(code);
             assert!(LANGUAGE_CODES.iter().any(|(_, v)| *v == mapped), "{code:?} → {mapped:?} is not allow-listed");
         }
+    }
+
+    #[test]
+    fn language_tables_agree() {
+        assert_eq!(LANGUAGE_NAMES.to_vec(), crate::LANGUAGES.to_vec());
+        assert!(LANGUAGE_CODES.iter().map(|(k, _)| *k).eq(crate::LANGUAGES.iter().map(|(k, _)| *k)));
+    }
+
+    #[test]
+    fn japanese_language_plan() {
+        let none: Vec<String> = Vec::new();
+        let jpn = vec!["eng".to_string(), "jpn".to_string()];
+        let both = vec!["jpn".to_string(), "jpn_vert".to_string()];
+        assert_eq!(language_plan("ja", &none).unwrap(), ("jpn".into(), None));
+        assert_eq!(language_plan("ja", &jpn).unwrap(), ("jpn".into(), None));
+        assert_eq!(language_plan("ja", &both).unwrap(), ("jpn+jpn_vert".into(), None));
+        assert_eq!(language_plan("ja-vert", &both).unwrap(), ("jpn_vert".into(), Some("5")));
+        assert!(language_plan("ja-vert", &jpn).is_err(), "missing data is named, not guessed");
+        assert_eq!(language_plan("en", &both).unwrap(), ("eng".into(), None));
+        assert_eq!(language_code("ja-vert"), "jpn_vert");
+        assert_eq!(language_plan("x; rm", &both).unwrap().0, "eng");
     }
 
     #[test]

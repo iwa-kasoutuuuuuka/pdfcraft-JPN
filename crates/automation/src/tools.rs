@@ -787,7 +787,7 @@ pub fn tools() -> Vec<ToolDef> {
         t(
             "page_add_text",
             "Add text to a page",
-            "Add text as page content (not a comment). Place it with at [x, y] (top-left, points from the top-left of the displayed page) and width (wrap width, default 200), or rect. Newlines start new lines; long lines wrap. Style: font helvetica/times/courier, size, bold, italic, color (#RRGGBB or a name, painted in RGB) or, for print, gray (0 black to 1 white, painted in DeviceGray) or cmyk ([c, m, y, k], each 0 to 1, painted in DeviceCMYK; [0, 0, 0, 1] is 100 K black), one of the three, align left/center/right, char_spacing (points after each character). Text must be Western European (WinAnsi) characters, or Arabic, Hebrew or Thai when the build has their craft-fonts faces (drawn right to left where the text is); others are refused. It stays editable with content_update. Undoable.",
+            "Add text as page content (not a comment). Place it with at [x, y] (top-left, points from the top-left of the displayed page) and width (wrap width, default 200), or rect. Newlines start new lines; long lines wrap. Style: font helvetica/times/courier, size, bold, italic, color (#RRGGBB or a name, painted in RGB) or, for print, gray (0 black to 1 white, painted in DeviceGray) or cmyk ([c, m, y, k], each 0 to 1, painted in DeviceCMYK; [0, 0, 0, 1] is 100 K black), one of the three, align left/center/right, char_spacing (points after each character), vertical (縦書き: columns top to bottom, right to left; rect's height is the column length; 1-2 digits or !! between Japanese characters stand upright side by side as 縦中横). Japanese ruby is written 漢字《かんじ》 or ｜親文字《るび》 and is drawn small above (vertical: right of) the base, while the markup stays in the text. Text must be Western European (WinAnsi) characters, Japanese (with the craft-fonts Japanese face), or Arabic, Hebrew or Thai when the build has their craft-fonts faces (drawn right to left where the text is); others are refused. It stays editable with content_update. Undoable.",
         )
         .cmd("edit.text")
         .with(schema(
@@ -803,6 +803,7 @@ pub fn tools() -> Vec<ToolDef> {
                 "align": { "type": "string", "enum": ["left", "center", "right", "justify"] },
                 "aligns": { "type": "array", "maxItems": 4096, "items": { "type": "string", "enum": ["left", "center", "right", "justify", "inherit"] }, "description": "Each paragraph's (line's) own alignment, by index; inherit (or legacy null) follows align." },
                 "char_spacing": { "type": "number", "minimum": -500, "maximum": 500, "description": "Points after each character." },
+                "vertical": { "type": "boolean", "description": "Vertical writing (縦書き): columns run top to bottom, the first at the box's right edge. Japanese is upright, Western words sideways." },
             }),
             &["doc", "page", "text"],
         )),
@@ -816,7 +817,7 @@ pub fn tools() -> Vec<ToolDef> {
             json!({ "doc": doc(), "page": { "type": "integer", "minimum": 1 }, "path": { "type": "string" }, "rect": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4 } }),
             &["doc", "page", "path"],
         )),
-        t("content_update", "Edit added content", "Move/resize (rect), retype (text) or restyle (font, size, bold, italic, color or gray or cmyk as page_add_text takes them, align, char_spacing in points) an added item (page, index from content_list). Images: rotate (degrees, multiple of 90, counter-clockwise), flip_h / flip_v (toggle), crop [left, bottom, right, top] as fractions trimmed, image (a file that replaces the picture). Undoable.")
+        t("content_update", "Edit added content", "Move/resize (rect), retype (text) or restyle (font, size, bold, italic, color or gray or cmyk as page_add_text takes them, align, char_spacing in points, vertical) an added item (page, index from content_list). Images: rotate (degrees, multiple of 90, counter-clockwise), flip_h / flip_v (toggle), crop [left, bottom, right, top] as fractions trimmed, image (a file that replaces the picture). Undoable.")
             .with(schema(
                 json!({
                     "doc": doc(), "page": { "type": "integer", "minimum": 1 }, "index": { "type": "integer", "minimum": 1 },
@@ -828,6 +829,7 @@ pub fn tools() -> Vec<ToolDef> {
                     "align": { "type": "string", "enum": ["left", "center", "right", "justify"] },
                     "aligns": { "type": "array", "maxItems": 4096, "items": { "type": "string", "enum": ["left", "center", "right", "justify", "inherit"] }, "description": "Each paragraph's (line's) own alignment, by index; inherit (or legacy null) follows align." },
                     "char_spacing": { "type": "number", "minimum": -500, "maximum": 500, "description": "Points after each character." },
+                    "vertical": { "type": "boolean", "description": "Vertical writing (縦書き)." },
                     "rotate": { "type": "integer" }, "flip_h": { "type": "boolean" }, "flip_v": { "type": "boolean" },
                     "crop": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 0.95 }, "minItems": 4, "maxItems": 4, "description": "Fractions trimmed: left, bottom, right, top. Left and right together, and bottom and top together, trim at most 0.95." },
                     "image": { "type": "string", "description": "Replace the picture with this file." },
@@ -1480,8 +1482,8 @@ pub fn tools() -> Vec<ToolDef> {
                     "doc": doc(),
                     "pages": pages("to recognise (default: all)"),
                     "dpi": { "type": "number", "minimum": 72, "maximum": 600, "description": "Resolution pages are read at (default 300; a scanned page is read at most at its own resolution)." },
-                    "language": { "type": "string", "enum": language_enum(), "description": "Document language (default en)." },
-                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract"], "description": "Which engine reads the pages (default ocrs). auto: ocrs first and tesseract as the second engine, combined by strategy (only the engines that can run take part)." },
+                    "language": { "type": "string", "enum": language_enum(), "description": "Document language (default en). Non-English languages need the tesseract engine; ja reads horizontal and (with jpn_vert installed) vertical Japanese, ja-vert vertical-only pages (tesseract page mode 5)." },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"], "description": "Which engine reads the pages (default ocrs). auto: ocrs first and tesseract as the second engine, combined by strategy (only the engines that can run take part); on Windows, auto reads ja/zh/ko with Windows OCR. windows: the Windows built-in OCR (Windows only; no install; reads horizontal and vertical Japanese; pages mixing both are read block by block)." },
                     "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"], "description": "How two engines' readings combine: primary = the first engine alone; confidence = the second engine joins when the first reading's mean confidence is under 70 or unknown; rover = both always read, merged. Default: confidence with engine auto, primary otherwise." },
                     "output_mode": { "type": "string", "enum": ["searchable", "editable"], "description": "searchable (default): invisible text over the pages of the open document. editable: a NEW <document>_ocr-style file of visible text written to out; the source is not touched." },
                     "out": { "type": "string", "description": "Where the editable output is written (required with output_mode editable; a new file: never the source path, never an existing file)." },
@@ -1506,7 +1508,7 @@ pub fn tools() -> Vec<ToolDef> {
                     "pages": pages("to read (default: all)"),
                     "dpi": { "type": "number", "minimum": 72, "maximum": 600 },
                     "language": { "type": "string", "enum": language_enum() },
-                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract"] },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"] },
                     "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },
                     "auto_rotate": { "type": "boolean" },
                     "deskew": { "type": "boolean" },
@@ -1533,7 +1535,7 @@ pub fn tools() -> Vec<ToolDef> {
                     "folder": { "type": "string" },
                     "dpi": { "type": "number", "minimum": 72, "maximum": 600 },
                     "language": { "type": "string", "enum": language_enum() },
-                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract"] },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"] },
                     "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },
                     "skip_text_pages": { "type": "boolean", "description": "Leave pages that already contain text alone (default true)." },
                     "skip_text_files": { "type": "boolean", "description": "Leave whole files that already contain text alone (default false)." },
@@ -1545,7 +1547,7 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["paths", "folder"],
             )),
-        t("ocr_status", "OCR status", "Whether text recognition is available, where it looks for models (release packages include them; a source build fetches them with `cargo xtask models`; PDFCRAFT_MODELS overrides), its languages, and the engines: ocrs (built in, models) and tesseract (an installed program, with its path).")
+        t("ocr_status", "OCR status", "Whether text recognition is available, where it looks for models (release packages include them; a source build fetches them with `cargo xtask models`; PDFCRAFT_MODELS overrides), its languages, and the engines: ocrs (built in, models), tesseract (an installed program, with its path) and windows (the Windows built-in OCR, on Windows). The japanese entry says whether tesseract's jpn and jpn_vert language data are installed (language ja reads horizontal and, with jpn_vert, vertical text; ja-vert reads vertical-only pages) and where to get them.")
             .ro()
             .cmd("ocr.recognize")
             .with(schema(json!({}), &[])),

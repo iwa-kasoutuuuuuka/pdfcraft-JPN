@@ -24,3 +24,7 @@ png = "0.18"
 
 [dev-dependencies]
 tempfile = "3.27"
+
+[target.'cfg(windows)'.dependencies]
+# Windows.Media.Ocr, the OS's built-in recogniser (safe projections only; same 0.62 line as the app).
+windows = { version = "0.62", default-features = false, features = ["std", "Foundation_Collections", "Globalization", "Graphics_Imaging", "Media_Ocr", "Storage_Streams"] }

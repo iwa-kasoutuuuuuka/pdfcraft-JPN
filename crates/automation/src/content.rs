@@ -64,6 +64,9 @@ fn style(a: &Args, t: &mut AddedText) -> Result<()> {
             other => return Err(bad(format!("unknown font {other:?} (helvetica, times, courier)"))),
         };
     }
+    if let Some(v) = a.opt_bool("vertical")? {
+        t.vertical = v;
+    }
     if let Some(b) = a.opt_bool("bold")? {
         t.bold = b;
     }

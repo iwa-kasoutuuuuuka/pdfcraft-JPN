@@ -39,7 +39,11 @@ pub enum EngineChoice {
     Ocrs,
     /// The installed `tesseract` binary, as an external process.
     Tesseract,
-    /// Ensemble: the default engine first, the other one as a secondary when available.
+    /// The Windows built-in OCR (`Windows.Media.Ocr`): Windows only, reads the OCR languages
+    /// Windows has installed (Japanese, horizontal and vertical, included).
+    Windows,
+    /// Ensemble: the default engine first, the other one as a secondary when available. On
+    /// Windows, Japanese, Chinese and Korean (and any language Tesseract lacks) go to Windows OCR.
     Auto,
 }
 
@@ -49,6 +53,7 @@ impl EngineChoice {
     pub fn parse(s: &str) -> EngineChoice {
         match s.trim().to_ascii_lowercase().as_str() {
             "tesseract" => EngineChoice::Tesseract,
+            "windows" | "windows-ocr" | "winocr" => EngineChoice::Windows,
             "auto" | "automatic" | "ensemble" => EngineChoice::Auto,
             _ => EngineChoice::Ocrs,
         }
@@ -60,7 +65,7 @@ impl EngineChoice {
     pub fn default_strategy(self) -> MergeStrategy {
         match self {
             EngineChoice::Auto => MergeStrategy::ConfidenceWeighted,
-            EngineChoice::Ocrs | EngineChoice::Tesseract => MergeStrategy::PrimaryOnly,
+            EngineChoice::Ocrs | EngineChoice::Tesseract | EngineChoice::Windows => MergeStrategy::PrimaryOnly,
         }
     }
 
@@ -69,6 +74,7 @@ impl EngineChoice {
         match self {
             EngineChoice::Ocrs => "ocrs",
             EngineChoice::Tesseract => "tesseract",
+            EngineChoice::Windows => "windows",
             EngineChoice::Auto => "auto",
         }
     }
@@ -229,7 +235,7 @@ pub struct OcrPage {
 
 impl OcrPage {
     pub fn text(&self) -> String {
-        self.words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ")
+        pdfcraft_ocr::join_words(self.words.iter().map(|w| w.text.as_str()))
     }
 
     /// Mean of the confidences the page's words report (`None` when none do).
@@ -515,7 +521,48 @@ pub fn engines_status_for(settings: &OcrSettings) -> Vec<EngineStatus> {
         let _ = settings;
         out.push(EngineStatus { id: "tesseract", available: false, why_not: Some(tesseract_unavailable()), program: None, version: None });
     }
+    let windows = windows_engine().is_some();
+    out.push(EngineStatus { id: "windows", available: windows, why_not: (!windows).then(windows_unavailable), program: None, version: None });
     out
+}
+
+/// The Windows built-in OCR engine, when this is Windows with at least one OCR language.
+fn windows_engine() -> Option<Arc<dyn Recognizer>> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        pdfcraft_ocr::windows_ocr::WindowsOcr::find().map(|w| Arc::new(w) as Arc<dyn Recognizer>)
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
+    }
+}
+
+/// Why Windows OCR cannot run, named for the user.
+fn windows_unavailable() -> String {
+    if cfg!(windows) {
+        "Windows has no OCR language installed (add one in Settings, Time & language, Language & region)".into()
+    } else {
+        "Windows OCR is only available on Windows".into()
+    }
+}
+
+/// Whether the Automatic engine hands `language` to Windows OCR: Japanese, Chinese and Korean
+/// (which the built-in models do not read and Tesseract needs extra data for), or any language
+/// whose Tesseract data is missing (`tess` is the installed data names; `None`: no Tesseract).
+fn prefers_windows(language: &str, tess: Option<&[String]>) -> bool {
+    if matches!(language, "ja" | "ja-vert" | "zh" | "ko") {
+        return true;
+    }
+    #[cfg(not(target_arch = "wasm32"))]
+    let data = pdfcraft_ocr::tesseract::LANGUAGE_CODES.iter().find(|(c, _)| *c == language).map(|(_, d)| *d);
+    #[cfg(target_arch = "wasm32")]
+    let data: Option<&str> = None;
+    match (language, tess, data) {
+        ("en", _, _) => false,
+        (_, Some(names), Some(d)) => !names.iter().any(|n| n == d),
+        _ => false,
+    }
 }
 
 /// The web build never spawns processes, so it never has Tesseract.
@@ -553,11 +600,21 @@ pub fn recognizers(settings: &OcrSettings) -> Result<Recognizers, String> {
     match settings.engine {
         EngineChoice::Ocrs => Ok(Recognizers { primary: ocrs.ok_or_else(models_missing)?, secondary: None }),
         EngineChoice::Tesseract => Ok(Recognizers { primary: tesseract.ok_or_else(tesseract_unavailable)?, secondary: None }),
-        EngineChoice::Auto => match (ocrs, tesseract) {
-            (Some(p), s) => Ok(Recognizers { primary: p, secondary: s }),
-            (None, Some(p)) => Ok(Recognizers { primary: p, secondary: None }),
-            (None, None) => Err(models_missing()),
-        },
+        EngineChoice::Windows => Ok(Recognizers { primary: windows_engine().ok_or_else(windows_unavailable)?, secondary: None }),
+        EngineChoice::Auto => {
+            if let Some(w) = windows_engine() {
+                let names: Option<Vec<String>> = tesseract.as_ref().map(|t| t.languages().into_iter().map(|(c, _)| c).collect());
+                let installed = w.languages().iter().any(|(c, _)| *c == settings.language);
+                if installed && prefers_windows(&settings.language, names.as_deref()) {
+                    return Ok(Recognizers { primary: w, secondary: None });
+                }
+            }
+            match (ocrs, tesseract) {
+                (Some(p), s) => Ok(Recognizers { primary: p, secondary: s }),
+                (None, Some(p)) => Ok(Recognizers { primary: p, secondary: None }),
+                (None, None) => Err(models_missing()),
+            }
+        }
     }
 }
 
@@ -614,10 +671,112 @@ pub fn engine_unavailable_reason(engine: EngineChoice) -> Option<String> {
     match engine {
         EngineChoice::Ocrs => (!ocrs).then(models_missing),
         EngineChoice::Tesseract => tesseract.err(),
+        EngineChoice::Windows => windows_engine().is_none().then(windows_unavailable),
         EngineChoice::Auto => match (ocrs, tesseract) {
             (true, _) | (false, Ok(())) => None,
             (false, Err(why)) => Some(format!("{}; {why}", models_missing())),
         },
+    }
+}
+
+/// What is known of the language data Tesseract has installed.
+enum TessLangs {
+    /// The first probe has not landed: offer everything rather than block the choice.
+    Unknown,
+    /// No usable Tesseract.
+    Missing,
+    /// The tessdata names `--list-langs` reported (`eng`, `jpn`, `jpn_vert`, …).
+    Installed(Vec<String>),
+}
+
+/// The languages `engine` offers, from the static table: the built-in ocrs reads English only;
+/// Tesseract reads what its `--list-langs` reports, mapped to PdfCraft's codes (`jpn` → `ja`,
+/// `jpn_vert` → `ja-vert`); Automatic offers both lists joined (English first).
+fn offered_from(engine: EngineChoice, tess: &TessLangs) -> Vec<(&'static str, &'static str)> {
+    let ocrs = &LANGUAGES[..1];
+    let from_tess: Vec<(&'static str, &'static str)> = match tess {
+        TessLangs::Unknown => LANGUAGES.to_vec(),
+        TessLangs::Missing => Vec::new(),
+        #[cfg(not(target_arch = "wasm32"))]
+        TessLangs::Installed(names) => pdfcraft_ocr::tesseract::LANGUAGE_CODES
+            .iter()
+            .filter(|(_, data)| names.iter().any(|n| n == data))
+            .filter_map(|(code, _)| LANGUAGES.iter().find(|l| l.0 == *code).copied())
+            .collect(),
+        #[cfg(target_arch = "wasm32")]
+        TessLangs::Installed(_) => Vec::new(),
+    };
+    let out: Vec<(&'static str, &'static str)> = match engine {
+        EngineChoice::Ocrs | EngineChoice::Windows => return ocrs.to_vec(),
+        EngineChoice::Tesseract => from_tess,
+        EngineChoice::Auto => {
+            let mut all = ocrs.to_vec();
+            for l in from_tess {
+                if !all.iter().any(|x| x.0 == l.0) {
+                    all.push(l);
+                }
+            }
+            all
+        }
+    };
+    if out.is_empty() { ocrs.to_vec() } else { out }
+}
+
+/// The language choices to show for `settings.engine`, as `(code, English name)`. Never waits
+/// on a process (the Tesseract answer is the cached probe), so the UI may call it every frame.
+/// A language already selected but not offered (a saved `ja` while Tesseract is still being
+/// probed) is the caller's to keep; this list only decides what can be newly chosen.
+pub fn offered_languages(settings: &OcrSettings) -> Vec<(&'static str, &'static str)> {
+    #[cfg(not(target_arch = "wasm32"))]
+    let tess = if matches!(settings.engine, EngineChoice::Ocrs | EngineChoice::Windows) {
+        TessLangs::Missing
+    } else {
+        match tesseract_engine_now(configured_tesseract(settings).as_deref()) {
+            Probe::Known(Some(t)) => TessLangs::Installed(t.languages().into_iter().map(|(c, _)| c).collect()),
+            Probe::Known(None) => TessLangs::Missing,
+            Probe::Pending => TessLangs::Unknown,
+        }
+    };
+    #[cfg(target_arch = "wasm32")]
+    let tess = TessLangs::Missing;
+    let base = offered_from(settings.engine, &tess);
+    match settings.engine {
+        EngineChoice::Windows => {
+            let w = windows_offered();
+            if w.is_empty() { base } else { w }
+        }
+        EngineChoice::Auto => {
+            let mut all = base;
+            for l in windows_offered() {
+                if !all.iter().any(|x| x.0 == l.0) {
+                    all.push(l);
+                }
+            }
+            all
+        }
+        _ => base,
+    }
+}
+
+/// The languages Windows OCR reads here, from the static table (empty when it is unavailable).
+fn windows_offered() -> Vec<(&'static str, &'static str)> {
+    let Some(w) = windows_engine() else { return Vec::new() };
+    let have = w.languages();
+    LANGUAGES.iter().filter(|l| have.iter().any(|(c, _)| c == l.0)).copied().collect()
+}
+
+/// Whether the Japanese language data for Tesseract is installed: `(jpn, jpn_vert)`, or `None`
+/// when Tesseract is not usable. Waits for the (cached) probe: for tools and tests, not the UI.
+pub fn japanese_data() -> Option<(bool, bool)> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let t = tesseract_engine(configured_tesseract(&OcrSettings::default()).as_deref())?;
+        let names: Vec<String> = t.languages().into_iter().map(|(c, _)| c).collect();
+        Some((names.iter().any(|n| n == "jpn"), names.iter().any(|n| n == "jpn_vert")))
+    }
+    #[cfg(target_arch = "wasm32")]
+    {
+        None
     }
 }
 
@@ -1377,6 +1536,8 @@ mod tests {
         assert_eq!(EngineChoice::parse("tesseract"), EngineChoice::Tesseract);
         assert_eq!(EngineChoice::parse(" AUTO "), EngineChoice::Auto);
         assert_eq!(EngineChoice::parse("ocrs"), EngineChoice::Ocrs);
+        assert_eq!(EngineChoice::parse(" Windows "), EngineChoice::Windows);
+        assert_eq!(EngineChoice::Windows.name(), "windows");
         assert_eq!(EngineChoice::parse("wat"), EngineChoice::Ocrs, "unknown names fall back to the default");
         assert_eq!(EngineChoice::default().name(), "ocrs");
     }
@@ -1985,6 +2146,42 @@ mod tests {
         // The new page is the displayed size (portrait, not the rotated-away landscape).
         let oinfo = out.get(oid).unwrap().info.pages[0].clone();
         assert_eq!((oinfo.width, oinfo.height), (info.width, info.height));
+    }
+
+    #[test]
+    fn offered_languages_follow_the_engine() {
+        let codes = |e, t: &TessLangs| offered_from(e, t).iter().map(|l| l.0).collect::<Vec<_>>();
+        let tess = TessLangs::Installed(vec!["eng".into(), "jpn".into(), "jpn_vert".into(), "osd".into()]);
+        assert_eq!(codes(EngineChoice::Ocrs, &tess), ["en"]);
+        assert_eq!(codes(EngineChoice::Tesseract, &tess), ["en", "ja", "ja-vert"]);
+        assert_eq!(codes(EngineChoice::Auto, &tess), ["en", "ja", "ja-vert"]);
+        let only_jpn = TessLangs::Installed(vec!["jpn".into()]);
+        assert_eq!(codes(EngineChoice::Tesseract, &only_jpn), ["ja"]);
+        assert_eq!(codes(EngineChoice::Auto, &only_jpn), ["en", "ja"]);
+        assert_eq!(codes(EngineChoice::Tesseract, &TessLangs::Missing), ["en"]);
+        assert_eq!(codes(EngineChoice::Auto, &TessLangs::Missing), ["en"]);
+        assert!(codes(EngineChoice::Tesseract, &TessLangs::Unknown).contains(&"ja"));
+    }
+
+    /// A vertical word (tall narrow box) is written down its column and extracts in order,
+    /// right column first.
+    #[test]
+    fn vertical_words_extract_top_to_bottom_right_to_left() {
+        let mut s = Session::new().with_clock(|| 1_700_000_000);
+        let id = s.open("src.pdf", None, Arc::new(fixture(1)), None).unwrap();
+        let col = |text: &str, x: f64| PlacedWord {
+            text: text.into(),
+            origin: [x, 100.0],
+            across: [12.0, 0.0],
+            up: [0.0, 12.0 * text.chars().count() as f64],
+            confidence: None,
+            source: "test".into(),
+        };
+        s.apply(id, Edit::AddOcrText { page: 0, words: vec![col("日本語", 150.0), col("縦書き", 120.0)] }).unwrap();
+        let text = crate::tests::page_texts(&s, id)[0].clone();
+        let (a, b) = (text.find("日本語"), text.find("縦書き"));
+        assert!(a.is_some() && b.is_some(), "{text:?}");
+        assert!(a < b, "right column reads first: {text:?}");
     }
 
     /// The searchable layer round-trips the recognized words through the engine's own

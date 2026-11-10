@@ -214,6 +214,11 @@ fn cargo_lock_versions(root: &Path) -> Result<BTreeSet<(String, String)>> {
 }
 
 pub fn is_asset_path(path: &str) -> bool {
+    // pdfcraft-JPN: `i18n/` is the craft-i18n checkout kept in the tree; ATTRIBUTION.toml records
+    // it as one `[[build_input]]` (kind = "translation"), as upstream records CRAFT_I18N_DIR.
+    if path.starts_with("i18n/") {
+        return false;
+    }
     Path::new(path).extension().and_then(std::ffi::OsStr::to_str).is_some_and(|e| ASSET_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
 }
 

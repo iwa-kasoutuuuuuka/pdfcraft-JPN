@@ -4922,6 +4922,7 @@ fn exporting_all_images_through_tools() {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // pdfcraft-JPN: the Japanese-face branches
 fn fill_and_sign_through_tools() {
     let dir = workdir("fill");
     let mut a = auto(&dir);
@@ -4954,12 +4955,18 @@ fn fill_and_sign_through_tools() {
     assert!(page_text(&mut a, doc)[0].contains("14 de noviembre"));
     assert!(matches!(a.call("fill_sign_date_format", &json!({ "format": "yyy" })), Err(ToolError::InvalidArgs(_))));
     // A date the PDF's text font can't hold is refused, not saved as "?".
-    match a.call("fill_sign_add", &json!({ "doc": doc, "page": 1, "type": "date", "at": [20, 300], "format": "dddd", "language": "ja" })) {
-        Err(ToolError::InvalidArgs(e)) => assert!(e.contains("火曜日") && e.contains("can't be written into the PDF yet"), "{e}"),
-        other => panic!("expected a refusal, got {other:?}"),
+    // pdfcraft-JPN: a Japanese date is written with the Japanese face where the build has it.
+    let ja = pdfcraft_fonts::document_japanese_font_for_style(false, false).is_some();
+    match a.call("fill_sign_add", &json!({ "doc": doc, "page": 1, "type": "date", "at": [150, 220], "format": "dddd", "language": "ja" })) {
+        Ok(_) if ja => {
+            let texts = page_text(&mut a, doc);
+            assert!(texts[0].contains("火曜日"), "{texts:?}");
+        }
+        Err(ToolError::InvalidArgs(e)) if !ja => assert!(e.contains("火曜日") && e.contains("can't be written into the PDF yet"), "{e}"),
+        other => panic!("unexpected result (Japanese face: {ja}): {other:?}"),
     }
     let f = ok(&mut a, "fill_sign_date_format", json!({ "format": "dddd", "language": "ja" }));
-    assert_eq!((f["today"].as_str(), f["unwritable"].as_str()), (Some("火曜日"), Some("火曜日")));
+    assert_eq!((f["today"].as_str(), f["unwritable"].as_str()), (Some("火曜日"), Some(if ja { "" } else { "火曜日" })));
     ok(&mut a, "fill_sign_date_format", json!({ "format": "d. mmmm yyyy", "language": "cs" }));
     assert!(matches!(a.call("fill_sign_date_format", &json!({ "format": "dd", "language": "xx" })), Err(ToolError::InvalidArgs(_))));
     assert!(matches!(
@@ -4973,7 +4980,8 @@ fn fill_and_sign_through_tools() {
         Err(ToolError::InvalidArgs(_))
     ));
     let list = ok(&mut a, "comment_list", json!({ "doc": doc }));
-    assert_eq!(list["count"], 7);
+    // pdfcraft-JPN: plus the Japanese date, where the build can write it.
+    assert_eq!(list["count"], if ja { 8 } else { 7 });
     assert!(matches!(a.call("fill_sign_add", &json!({ "doc": doc, "page": 1, "type": "text", "at": [1, 1] })), Err(ToolError::InvalidArgs(_))));
 }
 
@@ -7751,10 +7759,23 @@ fn text_the_standard_fonts_cannot_draw_is_never_silent_through_tools() {
     let out = ok(&mut a, "form_add_field", json!({ "doc": doc, "page": 1, "type": "button", "rect": [20, 60, 120, 82], "caption": "提交" }));
     warned(&out, &["\"提\" (U+63D0)"]);
     // Comments and Fill & Sign text: kept, and said.
-    let out = ok(&mut a, "comment_add", json!({ "doc": doc, "page": 1, "type": "textbox", "rect": [10, 200, 190, 240], "contents": "欢迎" }));
-    warned(&out, &["a comment on page 1", "\"欢\" (U+6B22)", "every viewer"]);
-    let out = ok(&mut a, "fill_sign_add", json!({ "doc": doc, "page": 1, "type": "text", "at": [20, 300], "text": "签名" }));
-    warned(&out, &["U+7B7E"]);
+    // A text box draws Japanese where the build has the Japanese face, and refuses (never `?`) what no face can draw.
+    let japanese = pdfcraft_fonts::document_japanese_font_for_style(false, false).is_some();
+    let box_args = |text: &str| json!({ "doc": doc, "page": 1, "type": "textbox", "rect": [10, 200, 190, 240], "contents": text });
+    refused(&mut a, "comment_add", box_args("\u{13000}\u{13001}"), "can't show");
+    if japanese {
+        let out = ok(&mut a, "comment_add", box_args("日本語"));
+        assert!(out.get("warnings").is_none(), "{out}");
+    } else {
+        refused(&mut a, "comment_add", box_args("日本語"), "Japanese");
+    }
+    // Fill & Sign text is a text box: Japanese drawn where the build has the face, the undrawable refused.
+    let sign_args = |text: &str| json!({ "doc": doc, "page": 1, "type": "text", "at": [20, 300], "text": text });
+    refused(&mut a, "fill_sign_add", sign_args("\u{13000}\u{13001}"), "can't show");
+    if japanese {
+        let out = ok(&mut a, "fill_sign_add", sign_args("署名"));
+        assert!(out.get("warnings").is_none(), "{out}");
+    }
     // A sticky note draws an icon, not its text: nothing to say.
     let out = ok(&mut a, "comment_add", json!({ "doc": doc, "page": 1, "type": "note", "at": [40, 40], "contents": "签名 OK", "author": "Ada" }));
     assert!(out.get("warnings").is_none(), "{out}");

@@ -41,6 +41,8 @@ impl PdfCraftApp {
             }
         }
         let view = &mut self.views[index];
+        // The binding edge is not a zoom or layout: it stays on with Always use my defaults.
+        view.right_to_left = v.right_to_left;
         if !self.always_default_view {
             match v.layout {
                 // The view opened in Default page display already.

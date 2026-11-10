@@ -32,7 +32,8 @@ pub use script::{
     script_missing, script_outline,
 };
 pub use shaping::{
-    ShapedCluster, ShapedScript, arabic_glyph, arabic_has, face_glyph, hebrew_has, shape_arabic, shape_hebrew, shape_thai, shaped_glyph, thai_has,
+    ShapedCluster, ShapedScript, VERTICAL_ORIGIN, arabic_glyph, arabic_has, face_glyph, hebrew_has, japanese_has, shape_arabic, shape_hebrew,
+    shape_japanese, shape_japanese_vertical, shape_thai, shaped_glyph, thai_has,
 };
 pub use std14::{Match as Std14Match, Std14};
 
@@ -87,6 +88,124 @@ fn is_wide(c: char) -> bool {
     )
 }
 
+/// Characters a line must not start with (行頭禁則): closing brackets, Japanese commas and stops,
+/// small kana, the long vowel mark and iteration marks.
+pub fn no_line_start(c: char) -> bool {
+    matches!(
+        c,
+        '、' | '。'
+            | '，'
+            | '．'
+            | '・'
+            | '：'
+            | '；'
+            | '？'
+            | '！'
+            | '‼'
+            | '⁇'
+            | '⁈'
+            | '⁉'
+            | 'ー'
+            | '〜'
+            | '～'
+            | '…'
+            | '‥'
+            | '」'
+            | '』'
+            | '）'
+            | '］'
+            | '｝'
+            | '】'
+            | '〕'
+            | '〉'
+            | '》'
+            | '〙'
+            | '〗'
+            | '｣'
+            | '”'
+            | '’'
+            | ')'
+            | ']'
+            | '}'
+            | '゛'
+            | '゜'
+            | 'ゝ'
+            | 'ゞ'
+            | 'ヽ'
+            | 'ヾ'
+            | '々'
+            | '〻'
+            | 'ぁ'
+            | 'ぃ'
+            | 'ぅ'
+            | 'ぇ'
+            | 'ぉ'
+            | 'っ'
+            | 'ゃ'
+            | 'ゅ'
+            | 'ょ'
+            | 'ゎ'
+            | 'ゕ'
+            | 'ゖ'
+            | 'ァ'
+            | 'ィ'
+            | 'ゥ'
+            | 'ェ'
+            | 'ォ'
+            | 'ッ'
+            | 'ャ'
+            | 'ュ'
+            | 'ョ'
+            | 'ヮ'
+            | 'ヵ'
+            | 'ヶ'
+            | 'ㇰ'..='ㇿ' | '.' | ',' | ':' | ';' | '!' | '?'
+    )
+}
+
+/// Characters a line must not end with (行末禁則): opening brackets.
+fn no_line_end(c: char) -> bool {
+    matches!(c, '「' | '『' | '（' | '［' | '｛' | '【' | '〔' | '〈' | '《' | '〘' | '〖' | '｢' | '“' | '‘' | '(' | '[' | '{')
+}
+
+/// `word` (no spaces) split where a line may break: before and after each East Asian wide
+/// character, except before a character that can't start a line or after one that can't end it.
+/// Runs of other characters (Latin words, numbers) stay whole.
+fn cjk_segments(word: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut start = 0;
+    let mut prev: Option<char> = None;
+    for (i, c) in word.char_indices() {
+        if let Some(p) = prev {
+            let boundary = (is_wide(p) || is_wide(c)) && !no_line_start(c) && !no_line_end(p);
+            if boundary {
+                out.extend(word.get(start..i));
+                start = i;
+            }
+        }
+        prev = Some(c);
+    }
+    out.extend(word.get(start..));
+    if out.is_empty() {
+        out.push(word);
+    }
+    out
+}
+
+/// The byte offsets inside `run` (a run without spaces) where a line may break between East Asian
+/// wide characters under the kinsoku rules, for wrappers with their own measuring (Add text).
+pub fn cjk_break_offsets(run: &str) -> Vec<usize> {
+    let mut at = 0;
+    let mut out = Vec::new();
+    for seg in cjk_segments(run) {
+        if at > 0 {
+            out.push(at);
+        }
+        at += seg.len();
+    }
+    out
+}
+
 /// Greedy line breaking within `width` points (paragraphs split on line breaks, where CRLF counts as one; words longer
 /// than a line are broken by character).
 pub fn wrap(text: &str, size: f64, width: f64) -> Vec<String> {
@@ -106,11 +225,15 @@ pub fn wrap_with(text: &str, size: f64, width: f64, measure: impl Fn(&str, f64) 
         let mut line_width = 0.0;
         // No word is on the line yet; an empty word (a leading space) still starts it.
         let mut fresh = true;
-        for word in para.split(' ') {
+        // pdfcraft-JPN: Japanese (and other East Asian wide) text has no spaces, so a line may break
+        // between any two wide characters, keeping the kinsoku rules (禁則処理) of `cjk_segments`.
+        // `joined` marks a segment that follows the previous one with no space.
+        for (word, joined) in para.split(' ').flat_map(|w| cjk_segments(w).into_iter().enumerate().map(|(k, s)| (s, k > 0))) {
             let word_width = measure(word, size);
-            let candidate = if fresh { word_width } else { line_width + space + word_width };
+            let gap = if joined { 0.0 } else { space };
+            let candidate = if fresh { word_width } else { line_width + gap + word_width };
             if candidate <= width {
-                if !fresh {
+                if !fresh && !joined {
                     line.push(' ');
                 }
                 line.push_str(word);
@@ -315,6 +438,19 @@ pub fn literal(bytes: &[u8]) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn japanese_wraps_between_characters_with_kinsoku() {
+        // Every character 1 pt wide: four fit on a line.
+        let w = |s: &str, _: f64| s.chars().count() as f64;
+        assert_eq!(wrap_with("日本語の文章です", 1.0, 4.0, w), ["日本語の", "文章です"]);
+        // 。 never starts a line, 「 never ends one.
+        assert_eq!(wrap_with("あいうえ。かき", 1.0, 4.0, w), ["あいう", "え。かき"]);
+        assert_eq!(wrap_with("あいう「かき」", 1.0, 4.0, w), ["あいう", "「かき」"]);
+        // Latin words inside Japanese stay whole and spaces between words are kept.
+        assert_eq!(wrap_with("PDF を開く", 1.0, 6.0, w), ["PDF を開", "く"]);
+        assert_eq!(cjk_segments("abc日本"), ["abc", "日", "本"]);
+    }
 
     #[test]
     fn wrap_keeps_leading_spaces() {

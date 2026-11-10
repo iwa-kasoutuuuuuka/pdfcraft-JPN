@@ -4758,6 +4758,7 @@ fn added_text_and_images_render_and_stay_editable() {
 fn pasted_added_content_keeps_its_style_and_picture() {
     let (mut s, id) = session_with(2);
     let text = AddedText {
+        vertical: false,
         rect: [20.0, 250.0, 180.0, 264.4],
         text: "Styled note".into(),
         family: FontFamily::Times,
@@ -9934,6 +9935,7 @@ fn content_edit_keeps_pages_annotations_fields_and_links() {
     let marks = before.marks().to_vec();
     let bytes = before.bytes.clone();
     let text = AddedText {
+        vertical: false,
         rect: [20.0, 20.0, 200.0, 60.0],
         text: "hello".into(),
         family: FontFamily::Helvetica,
@@ -9976,6 +9978,7 @@ fn content_refresh_lists_match_the_storages_an_edit_touches() {
         Edit::AddText {
             page: 0,
             text: AddedText {
+                vertical: false,
                 rect: [0.0, 0.0, 10.0, 10.0],
                 text: String::new(),
                 family: FontFamily::Helvetica,

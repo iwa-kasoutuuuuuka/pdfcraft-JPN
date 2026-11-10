@@ -1,4 +1,4 @@
-use pdfcraft_fonts::shaped_text::{is_thai, thai_refusal, thai_width};
+use pdfcraft_fonts::shaped_text::{is_shaped, thai_refusal, thai_width};
 
 use super::marks::{
     Background, Context, HeaderFooter, MarkKind, MarkText, Watermark, add_picture_resource, bates_start, expand, matrix_number, n, picture, rgb,
@@ -85,7 +85,7 @@ fn add_header_footer_in_place(doc: &mut Document, pages: &[usize], hf: &HeaderFo
     let bates_of = |k: usize| bates0.checked_add(k as u64).ok_or_else(|| EditError::Invalid("the Bates numbers are too large".into()));
     // Every Thai line drawn on any page (a Bates prefix may join a template's Thai), for its fonts.
     let mut thai_lines = std::collections::BTreeSet::new();
-    if hf.text.iter().any(|t| t.chars().any(is_thai)) {
+    if hf.text.iter().any(|t| t.chars().any(is_shaped)) {
         for k in 0..pages.len() {
             let (number, bates) = (number_of(k)?, bates_of(k)?);
             thai_lines.extend(hf.text.iter().flat_map(|t| expand(t, number, count, bates, cx).lines().map(str::to_owned).collect::<Vec<_>>()));
