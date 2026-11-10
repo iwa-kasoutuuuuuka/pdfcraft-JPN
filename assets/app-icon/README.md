@@ -1,34 +1,35 @@
 # PdfCraft app icon
 
-<img src="pdfcraft-small.svg" alt="PdfCraft app icon: an engraved lion's head on red" width="128">
+<img src="pdfcraft-small.svg" alt="PdfCraft app icon: a PDF page floating above its shadow, on red" width="128">
 
-**Creature:** a lion, in a frontal head-and-shoulders portrait, mane running off the bottom of the tile.
+**Motif:** a PDF page, tilted slightly and floating above its own shadow, with short lift marks between
+them. The page has a folded corner, "PDF" lettering and three text lines.
 
-**Style:** an engraving (woodcut-weight line work) portrait in the Crafting Apps "owl template" framing:
-a full-bleed colour field, no frame or roundel, the animal looking at the viewer and filling the tile.
+**Style:** flat vector shapes with a heavy ink outline, on a full-bleed colour field with no frame or roundel.
+The "PDF" lettering is drawn as strokes, so the icon needs no font.
 
-**Palette:** exactly three colours.
+**Palette:** three colours (the shadow and lift marks are ink and paper at reduced opacity).
 
 | Colour | Hex | Used for |
 |---|---|---|
-| Ink | `#0b0b0c` | line work and the figure's contour |
-| Paper | `#efe9dc` | the figure (the lion's silhouette) |
-| PdfCraft red (app colour) | `#b70228` | the full-bleed field |
+| Ink | `#0b0b0c` | outlines, "PDF" lettering and the shadow |
+| Paper | `#efe9dc` | the page and the lift marks |
+| PdfCraft red (app colour) | `#b70228` | the full-bleed field and the text lines |
 
 **Tile:** `viewBox="0 0 512 512"`, a rounded square with `rx=112` that clips everything. Windows and Linux
 icons use the full-bleed tile. macOS icons put it on Apple's grid (an 824 px body centred on a transparent
 1024 px canvas).
 
-**Provenance:** the project owner's original drawing, made in ArtCraft (2880 px, keyed to the palette), then
-vectorised (potrace; no filtering or warping).
+**Provenance:** original artwork made for pdfcraft-JPN, written by hand as SVG shapes (no third-party
+material, no fonts, no traced images). It replaces the earlier engraved-lion icon.
 Licence: [LICENSE.txt](LICENSE.txt) (`MIT OR Apache-2.0`, like the repo).
 
 ## Files
 
 | File | What it is |
 |---|---|
-| `pdfcraft.svg` | the master vector (traced at 2048 px); every PNG, `.ico` and `.icns` is rendered from it |
-| `pdfcraft-small.svg` | a lighter vector (traced at 1024 px) for places where size matters, such as this README |
+| `pdfcraft.svg` | the master vector; every PNG, `.ico` and `.icns` is rendered from it |
+| `pdfcraft-small.svg` | a copy of the master, kept for places that link to it, such as this README |
 | `pdfcraft-1024.png` | 1024 px on Apple's grid; also the runtime Dock icon on macOS |
 | `pdfcraft.icns` | macOS icon (16–1024 px) |
 | `pdfcraft.ico` | Windows icon (16–256 px), embedded in `pdfcraft.exe` by `apps/pdfcraft/build.rs` |
