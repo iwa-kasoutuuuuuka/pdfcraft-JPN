@@ -43,6 +43,10 @@ pdfcraft-cli mcp    [--root DIR] [--compact] [--automation-read-root DIR] [--aut
                                                            write (save, export, extract, split, reports…) to DIR, links followed;
                                                            a root left out grants none of its access. --root, when also given,
                                                            applies as well
+pdfcraft-cli mcp install   [--target claude-code|antigravity|claude-desktop|cursor]… [--scope user|project] --root DIR
+                      [--compact] [--name NAME] [--exe PATH] [--dry-run] [--force]
+                                                           register this server in an agent's MCP config (merges; backs up to .pdfcraft-bak)
+pdfcraft-cli mcp uninstall    [--target …] [--scope …] [--name NAME] [--dry-run]
 "
     };
 }
@@ -55,6 +59,8 @@ macro_rules! mcp_usage {
 
 mod check;
 mod commands;
+#[cfg(feature = "mcp")]
+mod mcp_install;
 mod options;
 mod run;
 mod ui;

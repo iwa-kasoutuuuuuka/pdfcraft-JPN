@@ -162,6 +162,11 @@ fn automation_roots(command: &str, args: &[String]) -> Result<(Option<Arc<pdfcra
 
 #[cfg(feature = "mcp")]
 pub(crate) fn mcp(args: &[String]) -> Result<(), CliError> {
+    match args.first().map(String::as_str) {
+        Some("install") => return super::mcp_install::run(true, &args[1..]),
+        Some("uninstall") => return super::mcp_install::run(false, &args[1..]),
+        _ => {}
+    }
     let (roots, args) = automation_roots("mcp", args)?;
     let args = args.as_slice();
     validate_options("mcp", args, MCP_OPTIONS)?;
