@@ -44,7 +44,10 @@ fn craft_i18n() -> String {
     println!("cargo::rerun-if-env-changed=CRAFT_I18N_DIR");
     println!("cargo::rerun-if-env-changed=CRAFT_I18N_REQUIRED");
     let required = std::env::var("CRAFT_I18N_REQUIRED").is_ok_and(|v| v.trim() == "1");
-    let entries = match std::env::var_os("CRAFT_I18N_DIR").filter(|d| !d.is_empty()) {
+    // pdfcraft-JPN: without CRAFT_I18N_DIR, use the catalogs kept in this repository (`i18n/`),
+    // so every build is translated and Japanese entries can be added here directly.
+    let vendored = vendored_i18n_dir();
+    let entries = match std::env::var_os("CRAFT_I18N_DIR").filter(|d| !d.is_empty()).or(vendored) {
         // Not canonicalized: on Windows that gives `\\?\C:\…`, which `include_str!` can't read.
         Some(dir) => match locales(&std::path::PathBuf::from(dir).join("locales")) {
             Ok(entries) => entries,
@@ -70,6 +73,16 @@ fn craft_i18n() -> String {
     }
     o.push_str("];\n");
     o
+}
+
+/// The repository's own `i18n/` directory (absolute, without `..`), when it has `locales/`.
+fn vendored_i18n_dir() -> Option<std::ffi::OsString> {
+    let mut dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    dir.pop(); // crates/
+    dir.pop(); // repository root
+    dir.push("i18n");
+    println!("cargo::rerun-if-changed={}", dir.display());
+    dir.join("locales").is_dir().then(|| dir.into_os_string())
 }
 
 /// One embedded locale: its code, its `common.tsv` if it has one, and its PdfCraft catalog.
