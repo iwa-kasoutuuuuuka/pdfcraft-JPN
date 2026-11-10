@@ -263,9 +263,15 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
         egui::Grid::new("ocr-settings").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
             ui.label(tl!("Document language"));
             let name = LANGUAGES.iter().find(|l| l.0 == d.language).map_or("English", |l| l.1);
+            // The languages the chosen engine reads (Tesseract: what it has installed). A saved
+            // language the engine does not offer (yet) stays listed, so it is never dropped.
+            let mut offered = pdfcraft_engine::ocr::offered_languages(&d.settings());
+            if let Some(kept) = LANGUAGES.iter().find(|l| l.0 == d.language).filter(|l| !offered.iter().any(|o| o.0 == l.0)) {
+                offered.push(*kept);
+            }
             craft_ui::ComboBox::from_id_salt("ocr-language").selected_text(tl!(name)).width(220.0).show_ui(ui, |ui| {
-                for (code, name) in LANGUAGES {
-                    ui.selectable_value(&mut d.language, (*code).to_string(), tl!(*name));
+                for (code, name) in offered {
+                    ui.selectable_value(&mut d.language, code.to_string(), tl!(name));
                 }
             });
             ui.end_row();
@@ -274,10 +280,14 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
                 EngineChoice::Auto => tl!("Automatic"),
                 EngineChoice::Ocrs => tl!("Built-in"),
                 EngineChoice::Tesseract => tl!("Tesseract"),
+                EngineChoice::Windows => tl!("Windows OCR"),
             };
             craft_ui::ComboBox::from_id_salt("ocr-engine").selected_text(engine_name).width(220.0).show_ui(ui, |ui| {
-                let choices: [(EngineChoice, &str); 3] =
-                    [(EngineChoice::Auto, "Automatic"), (EngineChoice::Ocrs, "Built-in"), (EngineChoice::Tesseract, "Tesseract")];
+                let mut choices: Vec<(EngineChoice, &str)> =
+                    vec![(EngineChoice::Auto, "Automatic"), (EngineChoice::Ocrs, "Built-in"), (EngineChoice::Tesseract, "Tesseract")];
+                if cfg!(windows) || d.engine == EngineChoice::Windows {
+                    choices.push((EngineChoice::Windows, "Windows OCR"));
+                }
                 for (choice, name) in choices {
                     ui.selectable_value(&mut d.engine, choice, tl!(name));
                 }
@@ -391,7 +401,7 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
         // Said in the interface's language: the built-in engine's missing models get the
         // notice users know; Tesseract's reasons are catalog keys of their own.
         let text = match d.engine {
-            pdfcraft_engine::ocr::EngineChoice::Tesseract => crate::i18n::t(&why).to_string(),
+            pdfcraft_engine::ocr::EngineChoice::Tesseract | pdfcraft_engine::ocr::EngineChoice::Windows => crate::i18n::t(&why).to_string(),
             _ => tl!("Text recognition isn't installed: its model files are missing. Reinstall PdfCraft, or set PDFCRAFT_MODELS to the folder that holds them.")
                 .to_string(),
         };

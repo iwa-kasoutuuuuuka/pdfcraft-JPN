@@ -20,12 +20,15 @@
 
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::unimplemented, clippy::todo, clippy::unreachable)]
 
+pub mod blocks;
 pub mod confidence;
 pub mod merge;
 mod ocrs;
 pub mod preprocess;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tesseract;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod windows_ocr;
 
 pub use confidence::{ConfidenceBand, band_for, is_suspect, low_confidence};
 pub use merge::{MergeStrategy, StrategyOutcome, mean_confidence, recognize_with_strategy, rover_merge};
@@ -180,8 +183,34 @@ pub struct Line {
 
 impl Line {
     pub fn text(&self) -> String {
-        self.words.iter().map(|w| w.text.as_str()).collect::<Vec<_>>().join(" ")
+        join_words(self.words.iter().map(|w| w.text.as_str()))
     }
+}
+
+/// Whether `c` belongs to a script written without spaces between words: kana, kanji, Hangul,
+/// CJK and full-width punctuation and forms.
+pub fn is_cjk(c: char) -> bool {
+    matches!(c as u32,
+        0x1100..=0x11FF | 0x2E80..=0x2FDF | 0x3000..=0x30FF | 0x3130..=0x318F | 0x31F0..=0x31FF
+        | 0x3200..=0x4DBF | 0x4E00..=0x9FFF | 0xA960..=0xA97F | 0xAC00..=0xD7FF | 0xF900..=0xFAFF
+        | 0xFE30..=0xFE4F | 0xFF00..=0xFFEF | 0x20000..=0x3FFFF)
+}
+
+/// Join recognised words into text: a space between words, except where both neighbouring
+/// characters are CJK (Japanese has no word spaces, and engines that return a word per
+/// character or per run must not add spaces inside a sentence). Latin words keep their space,
+/// and so does a boundary between a CJK and a Latin word.
+pub fn join_words<'a>(words: impl IntoIterator<Item = &'a str>) -> String {
+    let mut out = String::new();
+    for w in words {
+        if let (Some(last), Some(first)) = (out.chars().next_back(), w.chars().next())
+            && !(is_cjk(last) && is_cjk(first))
+        {
+            out.push(' ');
+        }
+        out.push_str(w);
+    }
+    out
 }
 
 /// What a recogniser needs to know beyond the pixels.
@@ -521,6 +550,16 @@ pub fn lines_from_json(json: &str, source: &str) -> Result<Vec<Line>, OcrError> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cjk_words_join_without_spaces() {
+        assert_eq!(join_words(["日本", "語の", "文書"]), "日本語の文書");
+        assert_eq!(join_words(["hello", "world"]), "hello world");
+        assert_eq!(join_words(["PDF", "を", "開く", "ok"]), "PDF を開く ok");
+        assert_eq!(join_words(["これは", "、", "テスト。"]), "これは、テスト。");
+        let line = Line { words: vec![Word::new("縦", [0.0; 4], "t"), Word::new("書き", [0.0; 4], "t")] };
+        assert_eq!(line.text(), "縦書き");
+    }
 
     #[test]
     fn places_words_through_the_mapping() {

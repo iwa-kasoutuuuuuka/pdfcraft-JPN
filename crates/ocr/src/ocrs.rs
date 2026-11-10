@@ -27,7 +27,26 @@ fn checked_len(width: u32, height: u32) -> Result<usize, OcrError> {
 }
 
 /// The languages the models read (ISO 639-1); all use the Latin alphabet without accents.
-pub const LANGUAGES: &[(&str, &str)] = &[("en", "English")];
+///
+/// Every language code PdfCraft knows, with its English name. Only the first entry is read by
+/// the built-in ocrs models; the rest are read by the tesseract engine (`ja`: horizontal and,
+/// when installed, vertical; `ja-vert`: vertical only). Which of them an engine offers is
+/// decided by the engine layer.
+pub const LANGUAGES: &[(&str, &str)] = &[
+    ("en", "English"),
+    ("de", "German"),
+    ("fr", "French"),
+    ("es", "Spanish"),
+    ("it", "Italian"),
+    ("pt", "Portuguese"),
+    ("ru", "Russian"),
+    ("zh", "Chinese (Simplified)"),
+    ("ja", "Japanese"),
+    ("ja-vert", "Japanese (vertical)"),
+    ("ko", "Korean"),
+    ("ar", "Arabic"),
+    ("nl", "Dutch"),
+];
 
 /// The model files, as named in ATTRIBUTION.toml.
 pub const DETECTION_MODEL: &str = "text-detection.onnx";
@@ -197,7 +216,7 @@ impl Recognizer for OcrsRecognizer {
     }
 
     fn languages(&self) -> Vec<(String, String)> {
-        LANGUAGES.iter().map(|(c, n)| ((*c).to_string(), (*n).to_string())).collect()
+        LANGUAGES.iter().take(1).map(|(c, n)| ((*c).to_string(), (*n).to_string())).collect()
     }
 
     fn recognize(&self, image: &OcrImage, _options: &RecognizeOptions) -> Result<Vec<Line>, OcrError> {
