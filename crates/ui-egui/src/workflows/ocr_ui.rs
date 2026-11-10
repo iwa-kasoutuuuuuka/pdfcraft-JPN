@@ -61,10 +61,11 @@ impl Default for OcrDraft {
             pages: OcrPages::All,
             from: 1,
             to: 1,
-            language: "en".into(),
+            // pdfcraft-JPN: Japanese, read by whichever engine has it (Windows OCR on Windows).
+            language: "ja".into(),
             dpi: 300,
             text_pages: false,
-            engine: EngineChoice::default(),
+            engine: EngineChoice::Auto,
             strategy: MergeStrategy::default(),
             auto_rotate: false,
             deskew: false,

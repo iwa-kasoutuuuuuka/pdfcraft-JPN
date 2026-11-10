@@ -4634,3 +4634,4 @@ calendar weekday	We	水
 	The OCR built into Windows (no install; reads Japanese, vertical text too)	Windows 標準の OCR(インストール不要。日本語・縦書きにも対応)
 	Windows has no OCR language installed (add one in Settings, Time & language, Language & region)	Windows に OCR 用の言語が入っていません(設定 → 時刻と言語 → 言語と地域 で追加してください)
 	Windows OCR is only available on Windows	Windows OCR は Windows でのみ使えます
+	Skip	スキップ

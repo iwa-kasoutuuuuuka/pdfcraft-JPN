@@ -200,12 +200,13 @@ impl Default for OcrSettings {
     fn default() -> Self {
         OcrSettings {
             dpi: 300.0,
-            language: "en".into(),
+            // pdfcraft-JPN: Japanese, read by whichever engine has it (Windows OCR on Windows).
+            language: "ja".into(),
             skip_text_pages: true,
             native_text_only: false,
             skip_text_files: false,
             force_ocr: false,
-            engine: EngineChoice::default(),
+            engine: EngineChoice::Auto,
             strategy: MergeStrategy::default(),
             auto_rotate: false,
             deskew: false,
@@ -1551,11 +1552,12 @@ mod tests {
         assert_eq!(EngineChoice::Tesseract.default_strategy(), MergeStrategy::PrimaryOnly);
     }
 
-    /// Settings default to today's behavior: ocrs, PrimaryOnly, no preprocessing, searchable.
+    /// Settings default to Japanese read by whichever engine has it (pdfcraft-JPN), PrimaryOnly,
+    /// no preprocessing, searchable.
     #[test]
     fn settings_default_to_the_ocrs_status_quo() {
         let s = OcrSettings::default();
-        assert_eq!(s.engine, EngineChoice::Ocrs);
+        assert_eq!((s.engine, s.language.as_str()), (EngineChoice::Auto, "ja"));
         assert_eq!(s.strategy, MergeStrategy::PrimaryOnly);
         assert_eq!(s.output_mode, OutputMode::Searchable);
         assert!(!s.auto_rotate && !s.deskew && !s.denoise && !s.binarize);
