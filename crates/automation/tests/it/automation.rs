@@ -4922,6 +4922,7 @@ fn exporting_all_images_through_tools() {
 }
 
 #[test]
+#[allow(clippy::cognitive_complexity)] // pdfcraft-JPN: the Japanese-face branches
 fn fill_and_sign_through_tools() {
     let dir = workdir("fill");
     let mut a = auto(&dir);
@@ -4954,12 +4955,18 @@ fn fill_and_sign_through_tools() {
     assert!(page_text(&mut a, doc)[0].contains("14 de noviembre"));
     assert!(matches!(a.call("fill_sign_date_format", &json!({ "format": "yyy" })), Err(ToolError::InvalidArgs(_))));
     // A date the PDF's text font can't hold is refused, not saved as "?".
-    match a.call("fill_sign_add", &json!({ "doc": doc, "page": 1, "type": "date", "at": [20, 300], "format": "dddd", "language": "ja" })) {
-        Err(ToolError::InvalidArgs(e)) => assert!(e.contains("火曜日") && e.contains("can't be written into the PDF yet"), "{e}"),
-        other => panic!("expected a refusal, got {other:?}"),
+    // pdfcraft-JPN: a Japanese date is written with the Japanese face where the build has it.
+    let ja = pdfcraft_fonts::document_japanese_font_for_style(false, false).is_some();
+    match a.call("fill_sign_add", &json!({ "doc": doc, "page": 1, "type": "date", "at": [150, 220], "format": "dddd", "language": "ja" })) {
+        Ok(_) if ja => {
+            let texts = page_text(&mut a, doc);
+            assert!(texts[0].contains("火曜日"), "{texts:?}");
+        }
+        Err(ToolError::InvalidArgs(e)) if !ja => assert!(e.contains("火曜日") && e.contains("can't be written into the PDF yet"), "{e}"),
+        other => panic!("unexpected result (Japanese face: {ja}): {other:?}"),
     }
     let f = ok(&mut a, "fill_sign_date_format", json!({ "format": "dddd", "language": "ja" }));
-    assert_eq!((f["today"].as_str(), f["unwritable"].as_str()), (Some("火曜日"), Some("火曜日")));
+    assert_eq!((f["today"].as_str(), f["unwritable"].as_str()), (Some("火曜日"), Some(if ja { "" } else { "火曜日" })));
     ok(&mut a, "fill_sign_date_format", json!({ "format": "d. mmmm yyyy", "language": "cs" }));
     assert!(matches!(a.call("fill_sign_date_format", &json!({ "format": "dd", "language": "xx" })), Err(ToolError::InvalidArgs(_))));
     assert!(matches!(
@@ -4973,7 +4980,8 @@ fn fill_and_sign_through_tools() {
         Err(ToolError::InvalidArgs(_))
     ));
     let list = ok(&mut a, "comment_list", json!({ "doc": doc }));
-    assert_eq!(list["count"], 7);
+    // pdfcraft-JPN: plus the Japanese date, where the build can write it.
+    assert_eq!(list["count"], if ja { 8 } else { 7 });
     assert!(matches!(a.call("fill_sign_add", &json!({ "doc": doc, "page": 1, "type": "text", "at": [1, 1] })), Err(ToolError::InvalidArgs(_))));
 }
 

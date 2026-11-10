@@ -8,8 +8,8 @@
 
 use pdfcraft_fonts::ShapedCluster;
 
-use super::super::types::AddedText;
 use super::super::EditError;
+use super::super::types::AddedText;
 use super::thai_error;
 
 /// Extra room, in em of the item's size, that a line (horizontal) or column (vertical) with ruby takes.
@@ -188,7 +188,8 @@ mod tests {
 
     #[test]
     fn unmatched_empty_and_baseless_markup_is_plain() {
-        for s in ["東京《とうきょう", "《あ》", "東京《》", "｜《あ》", "あ《い《う》", "東京《と\nう》", "｜あ", "plain"] {
+        for s in ["東京《とうきょう", "《あ》", "東京《》", "｜《あ》", "あ《い《う》", "東京《と\nう》", "｜あ", "plain"]
+        {
             let spans = ruby_spans(s);
             let joined: String = spans
                 .iter()

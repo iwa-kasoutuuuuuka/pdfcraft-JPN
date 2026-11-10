@@ -3831,8 +3831,8 @@ document scrollbar width	Wide	太い
 	1 line	1 行
 	; 1 image downsampled	; 画像 1 件をダウンサンプルしました
 	; 1 signed file kept its images	; 署名済みファイル 1 件は画像をそのまま残しました
-	; converted to {level}, but not everything complies yet ({first}); see Apply PDF standards ▸ Save as PDF/A	; {level} に変換しましたが、すべてが準拠しているわけではありません（{first}）。「PDF 規格を適用 ▸ PDF/A として保存」を参照してください
-	; not PDF/A yet: {list} (open them in Apply PDF standards ▸ Save as PDF/A)	; まだ PDF/A ではありません: {list}（「PDF 規格を適用 ▸ PDF/A として保存」で開いてください）
+	; converted to {level}, but not everything complies yet ({first}); see Apply PDF standards ▸ Save as PDF/A	; {level} に変換しましたが、すべてが準拠しているわけではありません（{first}）。「PDF 規格を適用 → PDF/A として保存」を参照してください
+	; not PDF/A yet: {list} (open them in Apply PDF standards ▸ Save as PDF/A)	; まだ PDF/A ではありません: {list}（「PDF 規格を適用 → PDF/A として保存」で開いてください）
 	; not saved as {level}: {why}	; {level} として保存されませんでした: {why}
 	; saved as {level}	; {level} として保存しました
 	; the document is signed, so its images were left as they are	; 文書に署名があるため、画像はそのまま残しました
@@ -4013,7 +4013,7 @@ document scrollbar width	Wide	太い
 	Drag hotbar	ホットバーをドラッグ
 	Drag to move; double-click to put it back	ドラッグして移動、ダブルクリックで元の位置に戻す
 	Each set is a text file in	各セットは次のテキストファイルです:
-	Each set is a text file in the guide-set folder (Preferences ▸ Units and guides ▸ Open folder). Edit it in any text editor, send it to others, or drop theirs into the folder, then click Reload. Distances are measured from the edge you name, so a set fits other page sizes.	各セットは、ガイドセットフォルダー（環境設定 ▸ 単位とガイド ▸ フォルダーを開く）にあるテキストファイルです。任意のテキストエディターで編集したり、他の人に送ったり、受け取ったファイルをフォルダーに入れて「再読み込み」をクリックしたりできます。距離は指定した端から測るので、セットは別のページサイズにも使えます。
+	Each set is a text file in the guide-set folder (Preferences ▸ Units and guides ▸ Open folder). Edit it in any text editor, send it to others, or drop theirs into the folder, then click Reload. Distances are measured from the edge you name, so a set fits other page sizes.	各セットは、ガイドセットフォルダー（環境設定 → 単位とガイド → フォルダーを開く）にあるテキストファイルです。任意のテキストエディターで編集したり、他の人に送ったり、受け取ったファイルをフォルダーに入れて「再読み込み」をクリックしたりできます。距離は指定した端から測るので、セットは別のページサイズにも使えます。
 	Edge shadow removal	端の影の除去
 	Edit attachment description	添付ファイルの説明を編集
 	Edit description	説明を編集
@@ -4174,7 +4174,7 @@ document scrollbar width	Wide	太い
 	No page has text: the document appears to be images of pages	テキストのあるページがありません。文書はページの画像のようです
 	No problems found	問題は見つかりませんでした
 	No saved sets yet	保存済みのセットはまだありません
-	No saved sets yet. Right-click a ruler ▸ Save guides as a set…, or put a set file in the folder.	保存済みのセットはまだありません。ルーラーを右クリック ▸ ガイドをセットとして保存…、またはセットファイルをフォルダーに置いてください。
+	No saved sets yet. Right-click a ruler ▸ Save guides as a set…, or put a set file in the folder.	保存済みのセットはまだありません。ルーラーを右クリック → ガイドをセットとして保存…、またはセットファイルをフォルダーに置いてください。
 	No scanned pages were cleaned up.	クリーンアップしたスキャンページはありません。
 	Non-Repudiation	否認防止
 	On every page	すべてのページ
@@ -4259,7 +4259,7 @@ document scrollbar width	Wide	太い
 	Rev. {rev}: Signed by {name}	Rev. {rev}: {name} による署名
 	Right to left (RTL)	右から左 (RTL)
 	Right-click a guide for a colour, Properties… (colour, thickness, label, every page) and Delete. Double-click opens Properties too.	ガイドを右クリックすると、色、プロパティ…（色、太さ、ラベル、全ページ）、削除を選べます。ダブルクリックでもプロパティが開きます。
-	Right-click a ruler ▸ Save guides as a set… keeps the guides, the unit and, if you like, the grid under a name and a shortcut. {first} … {last} shows and hides a set over any document; Edit in document turns it back into guides you can move.	ルーラーを右クリック ▸ ガイドをセットとして保存… で、ガイド、単位、必要に応じてグリッドを、名前とショートカット付きで保持します。{first} … {last} で、どの文書の上でもセットを表示/非表示にできます。「文書内で編集」で、移動できるガイドに戻せます。
+	Right-click a ruler ▸ Save guides as a set… keeps the guides, the unit and, if you like, the grid under a name and a shortcut. {first} … {last} shows and hides a set over any document; Edit in document turns it back into guides you can move.	ルーラーを右クリック → ガイドをセットとして保存… で、ガイド、単位、必要に応じてグリッドを、名前とショートカット付きで保持します。{first} … {last} で、どの文書の上でもセットを表示/非表示にできます。「文書内で編集」で、移動できるガイドに戻せます。
 	Role map entry {} leads round in a circle	ロールマップのエントリ {} が循環しています
 	Rotate view clockwise (⇧⌘+)	ビューを時計回りに回転 (⇧⌘+)
 	Rule	ルール
@@ -4298,7 +4298,7 @@ document scrollbar width	Wide	太い
 	Signing time is from the clock on the signer's computer.	署名時刻は署名者のコンピューターの時計によるものです。
 	Single checks	個別チェック
 	Snap to grid	グリッドに合わせる
-	Spacing, offset, subdivisions, colour and thickness are in Preferences ▸ Units and guides.	間隔、オフセット、分割数、色、太さは「環境設定 ▸ 単位とガイド」で設定します。
+	Spacing, offset, subdivisions, colour and thickness are in Preferences ▸ Units and guides.	間隔、オフセット、分割数、色、太さは「環境設定 → 単位とガイド」で設定します。
 	Spot colour {}	特色 {}
 	Spot colours	特色
 	Standard fonts; text outside Windows-1252 isn't supported yet.	標準フォント。Windows-1252 の範囲外のテキストにはまだ対応していません。
@@ -4506,9 +4506,9 @@ document scrollbar width	Wide	太い
 	Verifies the file against the standard, without changing it	ファイルを変更せずに、規格に適合しているか検証します
 	Vertical layout	縦レイアウト
 	Vertical writing	縦書き
-	View ▸ Grid ({grid}) draws a grid over the pages; View ▸ Snap to grid ({snap}) makes a dragged guide snap to it.	表示 ▸ グリッド（{grid}）でページ上にグリッドを表示します。表示 ▸ グリッドにスナップ（{snap}）をオンにすると、ドラッグしたガイドがグリッドに吸着します。
-	View ▸ Guides ({guides}) hides and shows them; View ▸ Clear guides removes this document's guides. Guides are never saved in the PDF.	表示 ▸ ガイド（{guides}）でガイドの表示と非表示を切り替えます。表示 ▸ ガイドを消去 でこの文書のガイドを削除します。ガイドが PDF に保存されることはありません。
-	View ▸ Rulers ({rulers}) shows a ruler above and beside the pages. Click the corner between them to step to the next unit, or right-click a ruler to choose one.	表示 ▸ ルーラー（{rulers}）でページの上と横にルーラーを表示します。2 つのルーラーの交点をクリックすると次の単位に切り替わり、ルーラーを右クリックすると単位を選べます。
+	View ▸ Grid ({grid}) draws a grid over the pages; View ▸ Snap to grid ({snap}) makes a dragged guide snap to it.	表示 → グリッド（{grid}）でページ上にグリッドを表示します。表示 → グリッドにスナップ（{snap}）をオンにすると、ドラッグしたガイドがグリッドに吸着します。
+	View ▸ Guides ({guides}) hides and shows them; View ▸ Clear guides removes this document's guides. Guides are never saved in the PDF.	表示 → ガイド（{guides}）でガイドの表示と非表示を切り替えます。表示 → ガイドを消去 でこの文書のガイドを削除します。ガイドが PDF に保存されることはありません。
+	View ▸ Rulers ({rulers}) shows a ruler above and beside the pages. Click the corner between them to step to the next unit, or right-click a ruler to choose one.	表示 → ルーラー（{rulers}）でページの上と横にルーラーを表示します。2 つのルーラーの交点をクリックすると次の単位に切り替わり、ルーラーを右クリックすると単位を選べます。
 	Warm Sepia	ウォームセピア
 	Width between lines	行間の幅
 	Windows store  ·	Windows ストア ·
@@ -4632,5 +4632,5 @@ calendar weekday	We	水
 	Japanese (vertical)	日本語（縦書き）
 	Windows OCR	Windows OCR
 	The OCR built into Windows (no install; reads Japanese, vertical text too)	Windows 標準の OCR(インストール不要。日本語・縦書きにも対応)
-	Windows has no OCR language installed (add one in Settings, Time & language, Language & region)	Windows に OCR 用の言語が入っていません(設定 ▸ 時刻と言語 ▸ 言語と地域 で追加してください)
+	Windows has no OCR language installed (add one in Settings, Time & language, Language & region)	Windows に OCR 用の言語が入っていません(設定 → 時刻と言語 → 言語と地域 で追加してください)
 	Windows OCR is only available on Windows	Windows OCR は Windows でのみ使えます

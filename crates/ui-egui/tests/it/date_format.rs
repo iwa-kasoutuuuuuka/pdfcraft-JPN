@@ -139,7 +139,7 @@ fn a_date_the_pdf_cannot_hold_is_refused_with_a_warning_first() {
     if crate::support::skip_without_glyphs(
         "a_date_the_pdf_cannot_hold_is_refused_with_a_warning_first",
         "en",
-        "日曜日月曜日火曜日水曜日木曜日金曜日土曜日",
+        "रविवार सोमवार मंगलवार बुधवार गुरुवार शुक्रवार शनिवार",
     ) {
         return;
     }
@@ -148,9 +148,10 @@ fn a_date_the_pdf_cannot_hold_is_refused_with_a_warning_first() {
         app.set_option("language", "en").unwrap();
         app.open_bytes("form.pdf", None, PDF.to_vec()).expect("opens");
         app.set_option("left", "closed").unwrap();
-        // Japanese weekday names: Fill & Sign text can't hold them yet.
+        // Hindi weekday names: Fill & Sign text can't hold Devanagari yet (pdfcraft-JPN writes
+        // Japanese, so the Japanese names this test used now draw).
         app.set_option("date-format", "dddd").unwrap();
-        app.set_option("date-language", "ja").unwrap();
+        app.set_option("date-language", "hi").unwrap();
         app.set_option("dialog", "preferences").unwrap();
         app
     });

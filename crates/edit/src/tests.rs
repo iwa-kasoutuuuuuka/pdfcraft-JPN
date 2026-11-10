@@ -85,7 +85,8 @@ fn ruby_and_tate_chu_yoko_read_as_the_base_text() {
     let bytes = write_incremental(&doc, &SaveOptions::default()).unwrap();
     let mut renderer = pdfcraft_render::PageRenderer::new(Arc::new(bytes), pdfcraft_render::RenderConfig::default());
     for page in [1, 2] {
-        let out = renderer.render(pdfcraft_render::RenderRequest { page, kind: pdfcraft_render::RequestKind::Text, scale: 1.0, ..Default::default() });
+        let out =
+            renderer.render(pdfcraft_render::RenderRequest { page, kind: pdfcraft_render::RequestKind::Text, scale: 1.0, ..Default::default() });
         let got = out.text.expect("a text layer").plain_text();
         // (Page 1's fixture has its own text.)
         assert!(got.replace('\n', "").contains("令和7年に東京へ行き、親文字も読む。"), "page {page}: {got}");

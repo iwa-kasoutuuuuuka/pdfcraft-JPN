@@ -1070,9 +1070,17 @@ mod tests {
         s.set_date_format("d. mmmm yyyy").unwrap();
         assert_eq!(s.today_text_for_pdf(None, Some("es")).as_deref(), Ok("14. noviembre 2023"));
         assert_eq!(s.today_text_for_pdf(None, Some("cs")).as_deref(), Ok("14. listopadu 2023"), "no letter outside WinAnsi");
-        let e = s.today_text_for_pdf(Some("dddd"), Some("ja")).unwrap_err();
-        assert!(e.contains("火曜日") && e.contains("can't be written into the PDF yet"), "{e}");
+        // pdfcraft-JPN: Japanese dates are written with the Japanese face where the build has it.
+        let ja = pdfcraft_fonts::document_japanese_font_for_style(false, false).is_some();
+        let weekday = s.today_text_for_pdf(Some("dddd"), Some("ja"));
+        if ja {
+            assert_eq!(weekday.as_deref(), Ok("火曜日"));
+            assert_eq!(s.today_text_for_pdf(Some("yyyy\\年mm\\月"), Some("ja")).as_deref(), Ok("2023年11月"));
+        } else {
+            let e = weekday.unwrap_err();
+            assert!(e.contains("火曜日") && e.contains("can't be written into the PDF yet"), "{e}");
+            assert!(s.today_text_for_pdf(Some("yyyy\\年mm\\月"), Some("ja")).unwrap_err().contains("年月"));
+        }
         assert!(s.today_text_for_pdf(Some("dd.mm.yyyy"), Some("ja")).is_ok(), "numbers are fine in any language");
-        assert!(s.today_text_for_pdf(Some("yyyy\\年mm\\月"), Some("ja")).unwrap_err().contains("年月"));
     }
 }

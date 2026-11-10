@@ -191,9 +191,10 @@ fn unix_secs() -> u64 {
 fn make_backup(path: &Path, dir: &Path, file_name: &str) -> Result<(), String> {
     let first = dir.join(format!("{file_name}.pdfcraft-bak"));
     let ts = unix_secs();
-    let candidates = std::iter::once(first).chain((0..100).map(|n| {
-        if n == 0 { dir.join(format!("{file_name}.pdfcraft-bak.{ts}")) } else { dir.join(format!("{file_name}.pdfcraft-bak.{ts}.{n}")) }
-    }));
+    let candidates =
+        std::iter::once(first).chain((0..100).map(|n| {
+            if n == 0 { dir.join(format!("{file_name}.pdfcraft-bak.{ts}")) } else { dir.join(format!("{file_name}.pdfcraft-bak.{ts}.{n}")) }
+        }));
     for bak in candidates {
         let mut out = match std::fs::OpenOptions::new().write(true).create_new(true).open(&bak) {
             Ok(f) => f,
@@ -404,8 +405,12 @@ fn canonical_dir(p: &str, what: &str) -> Result<String, String> {
 
 fn user_scope_note(target: Target, scope: Scope) -> Result<(), CliError> {
     if target == Target::ClaudeCode && scope == Scope::User {
-        stdout_line(format_args!("  注意: Claude Code が起動中だと設定を上書きすることがあります。先に終了するか、反映されていなければ再実行してください。キーの並びは変わります(バックアップ .pdfcraft-bak あり)"))?;
-        stdout_line(format_args!("  Note: close Claude Code first, or re-run if it overwrote the change. Keys are re-sorted (a .pdfcraft-bak backup is kept)"))?;
+        stdout_line(format_args!(
+            "  注意: Claude Code が起動中だと設定を上書きすることがあります。先に終了するか、反映されていなければ再実行してください。キーの並びは変わります(バックアップ .pdfcraft-bak あり)"
+        ))?;
+        stdout_line(format_args!(
+            "  Note: close Claude Code first, or re-run if it overwrote the change. Keys are re-sorted (a .pdfcraft-bak backup is kept)"
+        ))?;
     }
     Ok(())
 }

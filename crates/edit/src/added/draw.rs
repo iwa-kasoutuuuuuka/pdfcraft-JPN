@@ -63,14 +63,15 @@ pub(super) fn draw_laid_shaped(
     let r = text_rect(t);
     let latin = font_name(t.family.base_font(t.bold, t.italic));
     // pdfcraft-JPN: the ruby of each line (none unless the text has 《…》 markup).
-    let marks = laid.iter().map(|(line, ..)| if ruby::has_ruby(line) { ruby::line_marks(t, line) } else { Ok(Vec::new()) }).collect::<Result<Vec<_>, _>>()?;
-    let clusters = shaped_text::clusters(laid.iter().map(|(_, _, _, pieces, _)| pieces.as_slice())).chain(marks.iter().flatten().flat_map(|m| m.clusters.iter()));
-    let shaped = ShapedFonts::new(clusters, outline, taken, fonts, "PCAr", &mut |o| Object::Ref(doc.add(o)))
-        .map_err(|(e, c)| match c.script {
-            ShapedScript::Arabic => arabic_error(e, &c.text),
-            ShapedScript::Hebrew => hebrew_error(e, &c.text),
-            ShapedScript::Thai | ShapedScript::Japanese => thai_error(e, &c.text),
-        })?;
+    let marks =
+        laid.iter().map(|(line, ..)| if ruby::has_ruby(line) { ruby::line_marks(t, line) } else { Ok(Vec::new()) }).collect::<Result<Vec<_>, _>>()?;
+    let clusters = shaped_text::clusters(laid.iter().map(|(_, _, _, pieces, _)| pieces.as_slice()))
+        .chain(marks.iter().flatten().flat_map(|m| m.clusters.iter()));
+    let shaped = ShapedFonts::new(clusters, outline, taken, fonts, "PCAr", &mut |o| Object::Ref(doc.add(o))).map_err(|(e, c)| match c.script {
+        ShapedScript::Arabic => arabic_error(e, &c.text),
+        ShapedScript::Hebrew => hebrew_error(e, &c.text),
+        ShapedScript::Thai | ShapedScript::Japanese => thai_error(e, &c.text),
+    })?;
     out.extend(format!("BT {}\n", t.fill_op()).bytes());
     if t.char_spacing != 0.0 {
         out.extend(format!("{} Tc\n", n(t.char_spacing)).bytes());

@@ -428,7 +428,8 @@ fn history_labels_keep_captured_names() {
     needs_catalogs!();
     set_current(JA());
     assert_eq!(action_label("Insert pages from Save {e}.pdf"), "Save {e}.pdf からページを挿入");
-    assert_eq!(command_label("Undo Insert pages from Save {e}.pdf"), "取り消し Save {e}.pdf からページを挿入");
+    // pdfcraft-JPN: the catalog has both "Undo {action}" and "Redo {action}", so the template is used.
+    assert_eq!(command_label("Undo Insert pages from Save {e}.pdf"), "元に戻す: Save {e}.pdf からページを挿入");
     assert_eq!(action_label("Untranslated custom action"), "Untranslated custom action");
     assert_eq!(menu_label("file.open", "Open…"), "開く…");
     set_current(Lang::EN);
