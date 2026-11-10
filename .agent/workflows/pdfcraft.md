@@ -34,7 +34,7 @@ pdfcraft-cli mcp install --target antigravity --root <作業フォルダ>
 
 - 日本語の本文は `text_extract` で取れる。縦書きは行順が列単位になることがあるので、結果が不自然なら `page_render` で確認する。
 - スキャン PDF(文字が取れない)は OCR する。まず `ocr_status` でエンジンを確認。
-- `ocr_recognize` を `language: "ja"` で実行する。tesseract エンジンを使う場合は `jpn.traineddata`(縦書きは `jpn_vert.traineddata`)が tessdata に必要。無ければ導入をユーザーに案内する。
+- `ocr_recognize` を `language: "ja"` と `engine: "auto"` で実行する(Windows では Windows OCR が使われ、インストール不要。`engine` を省くと英語専用の内蔵エンジンになり日本語は読めない)。tesseract エンジンを使う場合は `jpn.traineddata`(縦書きは `jpn_vert.traineddata`)が tessdata に必要。無ければ導入をユーザーに案内する。
 - 既定は「検索可能 PDF」(画像の上に不可視テキスト)。編集可能な新規文書にしたい場合は `output_mode: "editable"` と `out`(新しいパス)を指定する。
 - 結果はユーザーに見せて誤認識を確認する(`ocr_words` / `ocr_review_apply`)。
 - 日本語の書き込みに対応(pdfcraft-JPN): `page_add_text`・テキストボックスのコメント・ヘッダー/フッター・透かしで日本語が使える(craft-fonts の日本語フォントを Type 3 で埋め込み、コピー・検索も可)。

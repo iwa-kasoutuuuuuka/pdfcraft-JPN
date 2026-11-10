@@ -69,7 +69,7 @@ pdfcraft-cli mcp install --target cursor --scope project   # <cwd>\.cursor\mcp.j
 
 ## 日本語 PDF と OCR
 
-スキャン PDF は `ocr_recognize` を `language: "ja"` で実行します。tesseract を使う場合は `jpn.traineddata`(縦書きは `jpn_vert.traineddata`)が必要です。状態は `ocr_status` で確認できます。
+スキャン PDF は `ocr_recognize` を `language: "ja"` と `engine: "auto"` で実行します(Windows では Windows OCR を使用)。tesseract を使う場合は `jpn.traineddata`(縦書きは `jpn_vert.traineddata`)が必要です。状態は `ocr_status` で確認できます。
 
 ## うまくいかないとき
 
