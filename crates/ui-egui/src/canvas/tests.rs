@@ -3193,3 +3193,32 @@ fn only_pixel_snapping_passes_for_fitting_the_view() {
         assert!(!fits_height(Rect::from_min_size(pos2(0.0, 0.0), vec2(1.0, 600.5)), 600.0, ppp));
     }
 }
+
+#[test]
+fn right_edge_binding_mirrors_two_page_rows_and_the_cover() {
+    let info = pdfcraft_render::DocInfo {
+        pages: (0..5)
+            .map(|_| pdfcraft_render::PageInfo { width: 300.0, height: 400.0, label: String::new(), crop: [0.0, 0.0, 300.0, 400.0], rotation: 0 })
+            .collect(),
+        ..Default::default()
+    };
+    let mut v = DocView::new(DocId(1), &info, ViewDefaults { layout: PageLayout::TwoUp, continuous: true, ..Default::default() });
+    let w = 2000.0;
+    let ltr = v.layout(&info, w, 1.0);
+    v.right_to_left = true;
+    let rtl = v.layout(&info, w, 1.0);
+    assert_eq!(rtl.len(), ltr.len(), "rects stay in page order");
+    // Pages 0 and 1 swap sides; page 2 starts the next row, on the right.
+    assert_eq!(rtl[0].min.x, ltr[1].min.x);
+    assert_eq!(rtl[1].min.x, ltr[0].min.x);
+    assert!(rtl[0].min.x > rtl[1].min.x && rtl[2].min.x > rtl[3].min.x);
+    assert_eq!((rtl[0].min.y, rtl[1].min.y), (ltr[0].min.y, ltr[1].min.y));
+    // A cover page sits alone on the right, or on the left when bound on the right edge.
+    v.cover = true;
+    assert!(v.layout(&info, w, 1.0)[0].center().x < w / 2.0, "bound on the right, the cover is on the left");
+    v.right_to_left = false;
+    assert!(v.layout(&info, w, 1.0)[0].center().x > w / 2.0, "bound on the left, the cover is on the right");
+    v.right_to_left = true;
+    let r = v.layout(&info, w, 1.0);
+    assert!(r[1].min.x > r[2].min.x, "after the cover, the first page of a pair is on the right");
+}

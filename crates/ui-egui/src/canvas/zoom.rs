@@ -143,6 +143,15 @@ impl DocView {
         }
     }
 
+    /// Set right-edge binding. A no-op unless something changed.
+    pub fn set_right_to_left(&mut self, rtl: bool) {
+        if self.right_to_left != rtl {
+            self.right_to_left = rtl;
+            self.goto = Some((self.current, 0.0));
+            self.reset_coarse_state();
+        }
+    }
+
     /// Whether the cover page setting applies: only two-page view has a cover page.
     pub fn cover_applies(&self) -> bool {
         self.layout == PageLayout::TwoUp
@@ -363,7 +372,8 @@ impl DocView {
                 }
             }
             PageLayout::TwoUp => {
-                // With a cover page, the first page sits alone on the right.
+                // With a cover page, the first page sits alone on the right (on the left when
+                // bound on the right edge, where the pages of a spread run right to left).
                 let rows: Vec<&[pdfcraft_render::PageInfo]> = if self.cover && !info.pages.is_empty() {
                     std::iter::once(&info.pages[..1]).chain(info.pages[1..].chunks(2)).collect()
                 } else {
@@ -373,10 +383,20 @@ impl DocView {
                     let sizes: Vec<Vec2> = pair.iter().map(page_size).collect();
                     let row_w: f32 = sizes.iter().map(|v| v.x).sum::<f32>() + gap * (sizes.len() as f32 - 1.0);
                     let row_h = sizes.iter().map(|v| v.y).fold(0.0, f32::max);
-                    let mut x = if self.cover && ri == 0 { (content_w / 2.0 + gap / 2.0).max(SIDE) } else { ((content_w - row_w) / 2.0).max(SIDE) };
+                    let alone = self.cover && ri == 0;
+                    let mut x =
+                        if alone && !self.right_to_left { (content_w / 2.0 + gap / 2.0).max(SIDE) } else { ((content_w - row_w) / 2.0).max(SIDE) };
+                    if alone && self.right_to_left {
+                        x = (content_w / 2.0 - gap / 2.0 - row_w).max(SIDE);
+                    }
+                    // The first page of a row is at its right edge when bound there; `rects`
+                    // stays in page order.
+                    let mut right = x + row_w;
                     for size in sizes {
-                        rects.push(Rect::from_min_size(pos2(x, y + (row_h - size.y) / 2.0), size));
+                        let px = if self.right_to_left { right - size.x } else { x };
+                        rects.push(Rect::from_min_size(pos2(px, y + (row_h - size.y) / 2.0), size));
                         x += size.x + gap;
+                        right -= size.x + gap;
                     }
                     y += row_h + gap;
                 }
