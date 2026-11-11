@@ -15,7 +15,7 @@
 <h1 align="center">PdfCraft</h1>
 
 > [!NOTE]
-> **This is pdfcraft-JPN, a Japanese edition of PdfCraft** (full Japanese UI, Japanese/vertical text writing with ruby and tate-chu-yoko, right-to-left binding, Japanese era dates, Windows OCR, one-command MCP setup for Claude Code / Antigravity). **日本語の説明は [README.ja.md](README.ja.md) を参照してください。**
+> **This is pdfcraft-JPN, a Japanese edition of PdfCraft** (full Japanese UI, Japanese/vertical text writing with ruby and tate-chu-yoko, right-to-left binding, Japanese era dates, Windows OCR, one-command MCP setup for Claude Code / Antigravity). **日本語の説明は [README.ja.md](README.ja.md) を参照してください。** Download (Windows x64, portable): **[pdfcraft-JPN-windows-x64-portable.zip](https://github.com/iwa-kasoutuuuuuka/pdfcraft-JPN/releases/latest/download/pdfcraft-JPN-windows-x64-portable.zip)**
 
 <p align="center">
   <b>The PDF workbench; an open-source, modern PDF reader and editor, built in pure Rust.</b><br>

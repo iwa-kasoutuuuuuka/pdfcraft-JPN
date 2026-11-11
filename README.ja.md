@@ -9,6 +9,17 @@
 - 日本語 OCR(**Windows 標準 OCR** / Tesseract、縦書き対応)
 - **Claude Code・Antigravity** などの AI エージェントから操作(MCP)
 
+> [!TIP]
+> **ダウンロード(Windows x64・インストール不要)**
+> **[pdfcraft-JPN-windows-x64-portable.zip](https://github.com/iwa-kasoutuuuuuka/pdfcraft-JPN/releases/latest/download/pdfcraft-JPN-windows-x64-portable.zip)**(約 120 MB、OCR モデル込み)
+> ・ [すべてのリリース](https://github.com/iwa-kasoutuuuuuka/pdfcraft-JPN/releases)
+>
+> 1. zip を右クリック →「すべて展開」。
+> 2. 展開したフォルダの `pdfcraft.exe` をダブルクリック。
+> 3. 「Windows によって PC が保護されました」と出たら、「詳細情報」→「実行」。このビルドはコード署名していないため表示されます。
+>
+> 設定やログは `pdfcraft.exe` の隣の `PdfCraftData` フォルダに保存されます(ポータブル版。詳しくは同梱の `portable.txt`)。AI エージェントから使うときは、同じフォルダの `pdfcraft-cli.exe` を使います([7 章](#7-ai-エージェント連携claude-code--antigravity))。
+
 ---
 
 ## 目次
