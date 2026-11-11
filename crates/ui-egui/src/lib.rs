@@ -199,6 +199,8 @@ use workflows::create_ui;
 use workflows::export_ui;
 use workflows::files;
 use workflows::js_ui;
+use workflows::ocr_export_ui;
+use workflows::ocr_folder_ui;
 #[cfg(target_arch = "wasm32")]
 use workflows::ocr_route;
 use workflows::ocr_ui;
@@ -598,6 +600,10 @@ pub struct PdfCraftApp {
     /// Scan & OCR: the Recognize Text choices, the running job, and (tests) run it inline.
     pub ocr_draft: ocr_ui::OcrDraft,
     pub ocr_run: Option<ocr_ui::OcrRun>,
+    /// Scan & OCR: Export recognized text: the dialog's choices.
+    pub ocr_export_draft: ocr_export_ui::OcrExportDraft,
+    /// Scan & OCR: OCR a folder: the dialog's choices, the running job and the last summary.
+    pub ocr_folder: ocr_folder_ui::OcrFolderState,
     pub ocr_batch: Option<std::sync::Arc<std::sync::Mutex<ocr_ui::BatchProgress>>>,
     /// The web build's files being read in Web Workers (progress in `ocr_batch`).
     #[cfg(target_arch = "wasm32")]

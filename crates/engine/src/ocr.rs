@@ -177,7 +177,7 @@ pub(crate) fn own_text(r: &mut PageRenderer, page: usize) -> Result<pdfcraft_ren
 
 /// Whether `page` has text of its own ([`own_text`]). A stamp drawn as outlines on a scan still
 /// leaves the scan to read; its words are not read twice, since they count as already on the page.
-fn has_own_text(r: &mut PageRenderer, page: usize) -> bool {
+pub(crate) fn has_own_text(r: &mut PageRenderer, page: usize) -> bool {
     own_text(r, page).is_ok_and(|t| t.glyphs.iter().any(|g| !g.text.trim().is_empty()))
 }
 

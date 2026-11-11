@@ -7022,6 +7022,30 @@ tools = []
 evidence = []
 notes = "Adobe cloud; import images from any source instead"
 
+[[feature]]
+id = "ocr.export-text"
+title = "Export recognized text (txt / Word), Japanese and vertical text aware"
+area = "I"
+tier = "P1"
+milestone = "M10"
+status = "shipped"
+commands = ["ocr.export_text"]
+tools = ["export_text"]
+evidence = ["crates/automation/tests/it/ocr_text_folder.rs::export_text_writes_txt_and_docx_in_reading_order_with_japanese_tags", "crates/engine/src/text_export.rs::scanned_pages_are_read_on_a_copy_when_asked_and_the_document_is_left_alone"]
+notes = "Scan & OCR > Export recognized text. Reading order with vertical columns right to left, one paragraph per block of lines. Word output tags the text as Japanese (w:lang eastAsia ja-JP, East Asian font slot) and writes vertical pages as tbRl sections (vertical auto/on/off). Optionally reads pages without a text layer first on a scratch copy (language ja, engine auto). Plain text separates pages with a numbered line or form feeds."
+
+[[feature]]
+id = "ocr.folder-batch"
+title = "OCR a whole folder into searchable PDFs"
+area = "I"
+tier = "P1"
+milestone = "M10"
+status = "shipped"
+commands = ["ocr.folder"]
+tools = ["ocr_folder"]
+evidence = ["crates/automation/tests/it/ocr_text_folder.rs::ocr_folder_skips_text_files_reports_bad_ones_and_never_touches_the_sources", "crates/engine/src/ocr_folder/run_tests.rs::a_folder_is_made_searchable_next_to_the_sources_and_one_bad_file_does_not_stop_it"]
+notes = "Scan & OCR > OCR a folder. Optionally recursive; results next to the source with a suffix (_ocr) or in an output folder keeping the subfolder layout; a source is replaced only with an empty suffix plus overwrite; files that already have text and password-protected files are skipped with the reason, a failing file never stops the run; at most 1000 PDFs, 256 MiB per file and 4 GiB per run, refused with an error before anything is read. Runs off the UI thread with progress, Stop and a per-file summary."
+
 # ==================================================================================================
 # J. Create and export
 # ==================================================================================================

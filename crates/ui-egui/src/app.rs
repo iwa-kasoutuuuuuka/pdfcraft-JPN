@@ -224,6 +224,8 @@ impl PdfCraftApp {
             a11y_options: a11y_ui::A11yOptions::default(),
             ocr_draft: ocr_ui::OcrDraft::default(),
             ocr_run: None,
+            ocr_export_draft: Default::default(),
+            ocr_folder: Default::default(),
             ocr_batch: None,
             #[cfg(target_arch = "wasm32")]
             ocr_web_batch: None,

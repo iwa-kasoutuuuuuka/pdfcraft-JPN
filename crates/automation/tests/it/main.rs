@@ -16,6 +16,7 @@ mod japanese_text;
 mod list_selection;
 mod model_3d;
 mod model_render;
+mod ocr_text_folder;
 mod optimize_content_boundaries;
 mod portfolio_info;
 mod redact_after_stray_q_form;

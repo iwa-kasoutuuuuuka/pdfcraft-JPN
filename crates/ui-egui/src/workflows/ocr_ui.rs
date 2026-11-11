@@ -853,6 +853,7 @@ impl PdfCraftApp {
 
     /// Show progress; apply the result once the worker is done.
     pub(crate) fn poll_ocr(&mut self) {
+        self.poll_ocr_folder();
         #[cfg(target_arch = "wasm32")]
         self.pump_web_ocr();
         if let Some(b) = self.ocr_batch.clone() {

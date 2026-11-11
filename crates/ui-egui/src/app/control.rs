@@ -124,6 +124,8 @@ impl PdfCraftApp {
                     "accessibility-options" => Some(Dialog::AccessibilityOptions),
                     "recognize-text" => Some(Dialog::RecognizeText),
                     "enhance-scan" => Some(Dialog::EnhanceScan),
+                    "export-ocr-text" => Some(Dialog::ExportOcrText),
+                    "ocr-folder" => Some(Dialog::OcrFolder),
                     "js-console" => Some(Dialog::JsConsole),
                     "document-js" => Some(Dialog::DocumentJs),
                     "preferences" => Some(Dialog::Preferences),

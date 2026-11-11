@@ -413,6 +413,8 @@ use hayro::hayro_interpret::TransformExt;
 mod device;
 mod layout;
 mod order;
+mod paragraphs;
+pub use paragraphs::TextParagraph;
 
 use device::{CELL_GAP, WORD_GAP};
 #[cfg(test)]
