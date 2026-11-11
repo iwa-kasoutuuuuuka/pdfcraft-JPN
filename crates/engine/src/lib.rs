@@ -39,6 +39,7 @@ pub mod links;
 pub mod model3d;
 mod object_clip;
 pub mod ocr;
+pub mod ocr_folder;
 mod open;
 pub mod optimizer;
 mod page_filter;
@@ -57,6 +58,7 @@ mod sources;
 mod stamp_preview;
 #[cfg(test)]
 mod test_hooks;
+pub mod text_export;
 pub mod text_fonts;
 pub mod text_links;
 mod text_preview;
