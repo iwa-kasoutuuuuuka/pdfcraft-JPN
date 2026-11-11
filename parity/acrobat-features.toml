@@ -7031,7 +7031,7 @@ milestone = "M10"
 status = "shipped"
 commands = ["ocr.export_text"]
 tools = ["export_text"]
-evidence = ["crates/automation/tests/it/ocr_text_folder.rs::export_text_writes_txt_and_docx_in_reading_order_with_japanese_tags", "crates/engine/src/text_export.rs::tests::scanned_pages_are_read_on_a_copy_when_asked_and_the_document_is_left_alone"]
+evidence = ["crates/automation/tests/it/ocr_text_folder.rs::export_text_writes_txt_and_docx_in_reading_order_with_japanese_tags", "crates/engine/src/text_export.rs::scanned_pages_are_read_on_a_copy_when_asked_and_the_document_is_left_alone"]
 notes = "Scan & OCR > Export recognized text. Reading order with vertical columns right to left, one paragraph per block of lines. Word output tags the text as Japanese (w:lang eastAsia ja-JP, East Asian font slot) and writes vertical pages as tbRl sections (vertical auto/on/off). Optionally reads pages without a text layer first on a scratch copy (language ja, engine auto). Plain text separates pages with a numbered line or form feeds."
 
 [[feature]]

@@ -163,6 +163,9 @@ fn mostly_vertical(paragraphs: &[TextParagraph]) -> bool {
     total > 0 && down.saturating_mul(2) > total
 }
 
+/// The bytes of the scratch copy with its missing pages read (`None`: every page had text), and which pages (0-based) were read.
+type ReadPages = (Option<Arc<Vec<u8>>>, Vec<usize>);
+
 /// Read the pages `pages` (0-based) of `src` that have no text of their own, on a scratch copy,
 /// and return the copy's bytes with the pages read.
 fn read_missing(
@@ -172,7 +175,7 @@ fn read_missing(
     settings: &OcrSettings,
     engines: &dyn Fn(&OcrSettings) -> Result<Recognizers, String>,
     progress: &mut dyn FnMut(usize, usize) -> bool,
-) -> Result<(Option<Arc<Vec<u8>>>, Vec<usize>), String> {
+) -> Result<ReadPages, String> {
     let mut renderer = PageRenderer::new(src.bytes.clone(), src.config.clone());
     let need: Vec<usize> = pages.iter().copied().filter(|&p| !has_own_text(&mut renderer, p)).collect();
     if need.is_empty() {
@@ -189,7 +192,7 @@ fn read_missing(
     settings.skip_text_pages = true;
     settings.output_mode = crate::ocr::OutputMode::Searchable;
     let job = session.ocr_job(id, &need, settings).ok_or("the document could not be read")?;
-    let found = job.run(&recognizers, |done, total| progress(done, total));
+    let found = job.run(&recognizers, progress);
     session.apply_ocr(id, &found).map_err(|e| e.to_string())?;
     let bytes = session.save_bytes(id).map_err(|e| e.to_string())?;
     Ok((Some(bytes), need))

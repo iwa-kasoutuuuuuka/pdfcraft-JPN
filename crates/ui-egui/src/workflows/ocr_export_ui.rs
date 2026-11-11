@@ -193,7 +193,7 @@ impl PdfCraftApp {
             .add_filter_any_case(filter_name, &[draft.format.extension()])
             .set_title(tl!("Save the text as").to_string())
             .set_file_name(file_name);
-        self.ask_one(crate::pickers::Ask::Save(dialog), None, move |app, path| start(app, path));
+        self.ask_one(crate::pickers::Ask::Save(dialog), None, start);
     }
 }
 
