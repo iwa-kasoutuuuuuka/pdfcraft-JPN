@@ -4278,6 +4278,18 @@ evidence = ["crates/annot/src/tests.rs::stamps_draw_their_label_and_by_line", "c
 notes = "12 standard business stamps in PdfCraft's own design; ISO 32000 stamp names where defined. A stamp placed on a rotated page reads upright as the page is displayed (#1398)"
 
 [[feature]]
+id = "comment.stamps-seal"
+title = "Electronic seals (電子印鑑, ハンコ)"
+area = "E"
+tier = "P2"
+milestone = "M5"
+status = "shipped"
+commands = []
+tools = ["page_add_seal"]
+evidence = ["crates/engine/src/seal/tests.rs::a_name_is_set_vertically_and_fits_inside_the_circle", "crates/engine/src/seal/tests.rs::a_date_seal_has_three_bands_in_order", "crates/engine/src/seal/tests.rs::a_placed_seal_is_a_stamp_with_an_appearance_and_its_text", "crates/automation/tests/it/seal.rs::a_name_seal_is_a_stamp_comment_with_the_name_as_text", "crates/automation/tests/it/seal.rs::a_date_seal_has_the_organisation_date_and_name"]
+notes = "pdfcraft-JPN. Not an Acrobat feature: the Japanese 認印/名前印 (the name set vertically in a red circle or 角印 square) and データ印 (organisation, date and name in three bands). Placed as a vector Stamp comment (a custom stamp whose appearance is a generated one-page PDF), so it moves, resizes and deletes like any stamp; the Edit tab's stamp palette has a Seal section (name, kind, shape, department, date or era date, colour, size, preview). Text is the Gothic face from craft-fonts; a build without a Japanese face refuses Japanese text with a message saying so"
+
+[[feature]]
 id = "comment.stamps-sign-here"
 title = "Sign-here stamps"
 area = "E"
