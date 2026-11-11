@@ -185,6 +185,7 @@ use tools::measure_ui;
 use tools::object_ui;
 pub use tools::prepare;
 use tools::redact_ui;
+use tools::seal_ui;
 use tools::sign_ui;
 use tools::stamps_ui;
 use tools::tags_ui;
@@ -671,6 +672,9 @@ pub struct PdfCraftApp {
     /// The custom stamp library, and the stamp being created.
     pub custom_stamps: Vec<stamps_ui::CustomStamp>,
     pub stamp_draft: stamps_ui::StampDraft,
+    /// The electronic seal being made in the stamps palette, and its preview.
+    pub seal_draft: seal_ui::SealDraft,
+    pub(crate) seal_preview: seal_ui::SealPreview,
     /// PDF Optimizer choices.
     pub optimize_draft: OptimizeDraft,
     /// The running optimization (Optimize PDF ▸ Advanced optimization).

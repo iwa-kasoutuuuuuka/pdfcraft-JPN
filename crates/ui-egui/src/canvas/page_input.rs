@@ -347,6 +347,7 @@ fn tool_input(
         info,
         initials,
         signature,
+        today,
         tool,
         units,
         fill_text_size,
@@ -369,9 +370,17 @@ fn tool_input(
     }
     if let Some(cs) = custom_stamp.as_ref()
         && allowed
-        && crate::stamps_ui::place_custom(cx, cs, custom_line, author, free, view)
     {
-        frame.out.stamp_placed = true;
+        if let Some(seal) = cs.seal.as_ref() {
+            // pdfcraft-JPN: an electronic seal is drawn when it is placed (a date seal takes today).
+            match crate::seal_ui::place(cx, seal, today, author, free, view) {
+                Ok(true) => frame.out.stamp_placed = true,
+                Ok(false) => {}
+                Err(why) => frame.out.refused = Some(why),
+            }
+        } else if crate::stamps_ui::place_custom(cx, cs, custom_line, author, free, view) {
+            frame.out.stamp_placed = true;
+        }
     }
     if let QuickTool::Fill(ft) = tool
         && allowed

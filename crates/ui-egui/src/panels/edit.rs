@@ -248,6 +248,7 @@ pub(super) fn stamp_palette(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens
             }
         }
         crate::stamps_ui::palette_section(app, ui, t);
+        crate::seal_ui::palette_section(app, ui, t);
     });
 }
 
