@@ -19,6 +19,7 @@ mod layout;
 mod store;
 mod types;
 mod vertical;
+mod vertical_edit;
 
 pub(crate) use draw::thai_glyph_resources;
 #[cfg(test)]
@@ -34,6 +35,7 @@ pub use layout::{PASTE_STEP, first_undrawable, lines, paste_place, paste_rect, t
 use pdfcraft_fonts::ShapedCluster;
 pub use store::{add_content, delete_content, isolate_content, list_added, scan_markers, update_content};
 pub use types::{Added, AddedImage, AddedText, Align, CHAR_SPACING_LIMIT, Family, Ink, MarkerScan};
+pub use vertical_edit::{CaretMove, VerticalEditLayout, VerticalGlyph, VerticalGlyphKind, word_at};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Content {

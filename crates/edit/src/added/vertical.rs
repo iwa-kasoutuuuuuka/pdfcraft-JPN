@@ -20,7 +20,7 @@ use super::types::AddedText;
 use super::{Dict, Document, EditError, Object, literal, n, win_ansi};
 
 /// Distance between two columns' centres, in em (the same as the horizontal line pitch).
-const PITCH: f64 = 1.2;
+pub(super) const PITCH: f64 = 1.2;
 
 /// One thing placed in a column.
 #[derive(Clone, Debug)]
@@ -46,7 +46,7 @@ fn is_combined(chars: &[char], at: usize, len: usize) -> bool {
 }
 
 impl Cell {
-    fn text(&self) -> &str {
+    pub(super) fn text(&self) -> &str {
         match self {
             Cell::Upright(c) => &c.text,
             Cell::Sideways(s) | Cell::Combined(s) => s,
@@ -59,7 +59,7 @@ impl Cell {
     }
 
     /// The length the cell takes down the column, in points.
-    fn length(&self, t: &AddedText) -> f64 {
+    pub(super) fn length(&self, t: &AddedText) -> f64 {
         match self {
             Cell::Upright(c) => c.advance * t.size + t.char_spacing,
             Cell::Sideways(s) => latin_width(t, s) + t.char_spacing * s.chars().count() as f64,
@@ -93,22 +93,30 @@ fn cells(para: &str) -> Result<Vec<Cell>, EditError> {
     Ok(out)
 }
 
-/// [`cells`] for text without ruby markup.
-fn plain_cells(para: &str) -> Result<Vec<Cell>, EditError> {
+/// A stretch of a paragraph that becomes cells of one kind.
+#[derive(Clone, Debug, PartialEq)]
+pub(super) enum Run {
+    /// Japanese, shaped for vertical writing: one upright cell per cluster.
+    Japanese(String),
+    /// A word of other text (its spaces kept on it): one sideways cell.
+    Latin(String),
+    /// 縦中横: one combined cell.
+    Combined(String),
+}
+
+/// `para` (without ruby markup) split into [`Run`]s, in order; together they hold every character.
+pub(super) fn runs(para: &str) -> Vec<Run> {
     let mut out = Vec::new();
     let mut run = String::new();
     let mut latin = String::new();
-    let flush_run = |run: &mut String, out: &mut Vec<Cell>| -> Result<(), EditError> {
+    let flush_run = |run: &mut String, out: &mut Vec<Run>| {
         if !run.is_empty() {
-            let shaped = pdfcraft_fonts::shape_japanese_vertical(run).map_err(|e| thai_error(e, run))?;
-            out.extend(shaped.into_iter().map(Cell::Upright));
-            run.clear();
+            out.push(Run::Japanese(std::mem::take(run)));
         }
-        Ok(())
     };
-    let flush_latin = |latin: &mut String, out: &mut Vec<Cell>| {
+    let flush_latin = |latin: &mut String, out: &mut Vec<Run>| {
         if !latin.is_empty() {
-            out.push(Cell::Sideways(std::mem::take(latin)));
+            out.push(Run::Latin(std::mem::take(latin)));
         }
     };
     let chars: Vec<char> = para.chars().collect();
@@ -116,9 +124,9 @@ fn plain_cells(para: &str) -> Result<Vec<Cell>, EditError> {
     while let Some(&c) = chars.get(i) {
         // 縦中横: two characters first, then one.
         if let Some(len) = [2, 1].into_iter().find(|&len| is_combined(&chars, i, len)) {
-            flush_run(&mut run, &mut out)?;
+            flush_run(&mut run, &mut out);
             flush_latin(&mut latin, &mut out);
-            out.push(Cell::Combined(chars[i..i + len].iter().collect()));
+            out.push(Run::Combined(chars.get(i..i + len).unwrap_or_default().iter().collect()));
             i += len;
             continue;
         }
@@ -127,7 +135,7 @@ fn plain_cells(para: &str) -> Result<Vec<Cell>, EditError> {
             flush_latin(&mut latin, &mut out);
             run.push(c);
         } else {
-            flush_run(&mut run, &mut out)?;
+            flush_run(&mut run, &mut out);
             latin.push(c);
             // A word ends after its spaces.
             if c == ' ' {
@@ -135,8 +143,24 @@ fn plain_cells(para: &str) -> Result<Vec<Cell>, EditError> {
             }
         }
     }
-    flush_run(&mut run, &mut out)?;
+    flush_run(&mut run, &mut out);
     flush_latin(&mut latin, &mut out);
+    out
+}
+
+/// [`cells`] for text without ruby markup.
+fn plain_cells(para: &str) -> Result<Vec<Cell>, EditError> {
+    let mut out = Vec::new();
+    for run in runs(para) {
+        match run {
+            Run::Japanese(s) => {
+                let shaped = pdfcraft_fonts::shape_japanese_vertical(&s).map_err(|e| thai_error(e, &s))?;
+                out.extend(shaped.into_iter().map(Cell::Upright));
+            }
+            Run::Latin(s) => out.push(Cell::Sideways(s)),
+            Run::Combined(s) => out.push(Cell::Combined(s)),
+        }
+    }
     Ok(out)
 }
 
