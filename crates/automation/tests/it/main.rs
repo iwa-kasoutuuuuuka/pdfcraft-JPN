@@ -22,5 +22,6 @@ mod portfolio_info;
 mod redact_after_stray_q_form;
 mod redact_text_after_q;
 mod render_warnings;
+mod seal;
 mod text_copy;
 mod unreadable_objects;

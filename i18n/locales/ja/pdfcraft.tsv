@@ -4683,3 +4683,16 @@ calendar weekday	We	水
 	Without this, a result that already exists is left alone and the file is reported as skipped	オフのときは、すでにある結果には手を付けず、そのファイルをスキップとして報告します
 	Password-protected and damaged files are skipped or reported; the rest are still done.	パスワード付きのファイルはスキップ、壊れたファイルは失敗として報告し、残りは処理を続けます。
 	Choose the folder of PDF files	PDF ファイルのフォルダーを選択
+	Seal	印鑑
+	Seals	印鑑
+	An electronic seal with your name, or a date stamp. Click on the page to place it.	お名前の電子印鑑、または日付印です。ページをクリックして押します。
+	Name seal	認印
+	Date seal	データ印
+	Round	丸
+	Department:	部署:
+	Date of the day it is placed	押した日の日付
+	Japanese era (令和8.11.11)	和暦 (令和8.11.11)
+	Use this seal	この印鑑を使う
+	Write the date as yyyy-mm-dd, for example 2026-11-11	日付は yyyy-mm-dd の形で入力してください (例: 2026-11-11)
+	Type a name to see the seal	名前を入力すると印鑑が表示されます
+	The seal could not be drawn	印鑑を描画できませんでした
