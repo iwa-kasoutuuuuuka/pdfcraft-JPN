@@ -1511,3 +1511,63 @@ fn rail_page_and_zoom_fields_match_and_fit_the_rail() {
         assert!((r.center().x - rail.center().x).abs() < 1.0, "{r:?} is off the rail's centre ({rail:?})");
     }
 }
+
+/// pdfcraft-JPN: vertical text is typed in its columns (縦書きのまま入力): the arrows move the
+/// caret along a column and across the columns, Home and End go to the column's ends, and a click
+/// places the caret by the columns, not by the hidden horizontal text box.
+#[test]
+fn vertical_text_is_typed_in_its_columns() {
+    let mut h = harness();
+    h.state_mut().text_style.vertical = true;
+    assert!(h.state_mut().execute("edit.text"));
+    h.run_steps(2);
+    let p = at(&h, 150.0, 60.0);
+    click(&mut h, p);
+    h.event(egui::Event::Text("あいう".into()));
+    h.run_steps(1);
+    h.key_press(egui::Key::Enter);
+    h.run_steps(1);
+    h.event(egui::Event::Text("かきく".into()));
+    h.run_steps(2);
+    let caret = |h: &Harness<'static, PdfCraftApp>| {
+        let d = h.state().views[0].content.draft.as_ref().expect("the editor is open");
+        let s = d.selection.clone().expect("the box reports its caret");
+        (d.text.get(..s.start).unwrap_or_default().chars().count(), d.text.get(..s.end).unwrap_or_default().chars().count())
+    };
+    let key = |h: &mut Harness<'static, PdfCraftApp>, k: egui::Key| {
+        h.key_press(k);
+        h.run_steps(2);
+    };
+    assert_eq!(h.state().views[0].content.draft.as_ref().map(|d| d.text.as_str()), Some("あいう\nかきく"));
+    assert_eq!(caret(&h), (7, 7), "the caret after the last character");
+    key(&mut h, egui::Key::ArrowUp);
+    assert_eq!(caret(&h), (6, 6), "Up: the previous character");
+    key(&mut h, egui::Key::ArrowRight);
+    assert!(caret(&h).0 <= 3, "Right: the first column, which is on the right: {:?}", caret(&h));
+    key(&mut h, egui::Key::Home);
+    assert_eq!(caret(&h), (0, 0), "Home: the top of the column");
+    key(&mut h, egui::Key::End);
+    assert_eq!(caret(&h), (3, 3), "End: the end of the column, before its line break");
+    key(&mut h, egui::Key::ArrowLeft);
+    assert_eq!(caret(&h), (7, 7), "Left from the column's end: the end of the next column");
+    key(&mut h, egui::Key::ArrowDown);
+    assert_eq!(caret(&h), (7, 7), "Down at the end stays there");
+    // A click on the lower half of か puts the caret after it.
+    let screen = {
+        let s = h.state();
+        let d = s.views[0].content.draft.as_ref().unwrap();
+        let t = pdfcraft_engine::AddedText { text: d.text.clone(), rect: d.style.rect, ..d.style.clone() };
+        let l = pdfcraft_engine::VerticalEditLayout::new(&t);
+        let frame = pdfcraft_engine::added_text_rect(&pdfcraft_engine::AddedText { text: String::new(), ..t.clone() });
+        let (left, right) = l.column_span(1);
+        let (x, y) = ((left + right) / 2.0, 0.25 * l.caret(4).1 + 0.75 * l.caret(5).1);
+        let display = [frame[2] - x, frame[3] - y];
+        let r = s.views[0].page_screen_rect(0).unwrap();
+        let k = r.width() / 300.0;
+        let page_height = r.height() / k;
+        r.min + egui::vec2(display[0] as f32 * k, (page_height - display[1] as f32) * k)
+    };
+    click(&mut h, screen);
+    assert_eq!(caret(&h), (5, 5), "the click is placed by the columns");
+    assert!(h.state().views[0].content.draft.is_some(), "clicking in the box keeps it open");
+}
