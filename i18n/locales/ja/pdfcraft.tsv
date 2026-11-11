@@ -4635,3 +4635,44 @@ calendar weekday	We	水
 	Windows has no OCR language installed (add one in Settings, Time & language, Language & region)	Windows に OCR 用の言語が入っていません(設定 → 時刻と言語 → 言語と地域 で追加してください)
 	Windows OCR is only available on Windows	Windows OCR は Windows でのみ使えます
 	Skip	スキップ
+	OCR a folder	フォルダーを一括 OCR
+	OCR a folder…	フォルダーを一括 OCR…
+	Export recognized text	テキストを書き出す
+	Export recognized text…	テキストを書き出す…
+	Automatic (when the page's text is mostly vertical)	自動（ページの文字が主に縦書きのとき）
+	Always vertical	常に縦書き
+	Never vertical	縦書きにしない
+	Export Recognized Text	認識したテキストを書き出す
+	The text of the pages in reading order; vertical Japanese columns are read right to left.	ページの文字を読む順序で書き出します。縦書きの段は右から左へ読みます。
+	Word (.docx)	Word（.docx）
+	Text (.txt)	テキスト（.txt）
+	Vertical text	縦書き
+	Pages are separated by	ページの区切り
+	a line with the page number	ページ番号の行
+	form feeds	改ページ文字
+	Recognize pages that have no text first (Japanese)	文字のないページを先に認識する
+	Pages that are pictures are read with the engine and language chosen in Recognize Text; the document is not changed	画像のページは「テキストを認識」で選んだエンジンと言語で読み取ります。文書は変更されません
+	Save the text as	テキストの保存先
+	Exported the text of {n} pages to {path}	{n} ページ分のテキストを {path} に書き出しました
+	; {n} pages were recognized first	。{n} ページは先に文字認識しました
+	; {n} pages have no text	。{n} ページには文字がありません
+	{ok} files made searchable, {skipped} skipped, {failed} failed	{ok} 件を検索可能にし、{skipped} 件をスキップ、{failed} 件が失敗しました
+	; stopped before the end	。最後まで実行せずに停止しました
+	OCR a Folder	フォルダーを一括 OCR
+	Makes every PDF in a folder searchable, one file at a time. The language and engine are the ones in Recognize Text.	フォルダー内のすべての PDF を 1 件ずつ検索可能にします。言語とエンジンは「テキストを認識」の設定を使います。
+	File {d} of {t}	{t} 件中 {d} 件目
+	Close	閉じる
+	The run continues in the background	処理はバックグラウンドで続きます
+	Done	完了
+	{words} words, saved as {name}	{words} 語、{name} として保存
+	Another folder	別のフォルダー
+	None chosen	未選択
+	Choose folder…	フォルダーを選択…
+	Save the searchable copies	検索可能なコピーの保存先
+	Next to each original, with a suffix on the name	元のファイルと同じ場所に、名前に接尾辞を付けて保存
+	Suffix	接尾辞
+	In another folder, under the same names	別のフォルダーに、同じ名前で保存
+	Replace results that already exist (the originals are never replaced)	すでにある結果を置き換える（元のファイルは置き換えません）
+	Without this, a result that already exists is left alone and the file is reported as skipped	オフのときは、すでにある結果には手を付けず、そのファイルをスキップとして報告します
+	Password-protected and damaged files are skipped or reported; the rest are still done.	パスワード付きのファイルはスキップ、壊れたファイルは失敗として報告し、残りは処理を続けます。
+	Choose the folder of PDF files	PDF ファイルのフォルダーを選択

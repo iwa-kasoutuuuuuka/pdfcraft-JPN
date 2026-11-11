@@ -179,6 +179,10 @@ pub enum Dialog {
     RecognizeText,
     /// Scan & OCR ▸ Enhance scanned file.
     EnhanceScan,
+    /// Scan & OCR ▸ Export recognized text (txt / Word).
+    ExportOcrText,
+    /// Scan & OCR ▸ OCR a folder.
+    OcrFolder,
     /// The JavaScript console (⌘J).
     JsConsole,
     /// Document JavaScripts.

@@ -1547,6 +1547,54 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["paths", "folder"],
             )),
+        t("export_text", "Export text (txt / Word)", "Scan & OCR ▸ Export recognized text: write the text of pages as a UTF-8 plain text file (.txt; pages told apart by a `===== 3 / 12 =====` line, or form feeds with separator formfeed) or a Word document (.docx). The text is in reading order, Japanese vertical columns (縦書き) right to left, and grouped into paragraphs (lines of one block joined; a wider gap, another column or a change of writing direction starts the next). The Word file tags its text as Japanese (language ja-JP, East Asian font slot) and, with vertical auto (default: a page whose text is mostly vertical) or on, writes vertical pages as top-to-bottom sections; vertical off never does. ocr_if_needed first reads the selected pages that have no text layer (language ja and engine auto unless you say otherwise; the open document is not changed); without it such pages come back empty and are listed in empty_pages. The format comes from the path's extension unless format says. Returns path, pages, paragraphs, bytes, ocr_pages, vertical_pages, empty_pages and warnings. The document must allow copying.")
+            .cmd("ocr.export_text")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "path": { "type": "string", "description": "File to write (.txt or .docx); written atomically." },
+                    "format": { "type": "string", "enum": ["txt", "docx"], "description": "Default: from path's extension." },
+                    "pages": pages("to export (default: all)"),
+                    "ocr_if_needed": { "type": "boolean", "description": "Read pages without a text layer first (default false)." },
+                    "vertical": { "type": "string", "enum": ["auto", "on", "off"], "description": "Word: vertical text sections (default auto)." },
+                    "separator": { "type": "string", "enum": ["line", "formfeed"], "description": "Text: how pages are told apart (default line)." },
+                    "title": { "type": "string", "description": "Word: the document title (default: the document name)." },
+                    "document_language": { "type": "string", "description": "Word: BCP 47 language tag (default: from language, ja-JP)." },
+                    "language": { "type": "string", "enum": language_enum(), "description": "OCR language when ocr_if_needed (default ja)." },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"], "description": "OCR engine when ocr_if_needed (default auto)." },
+                    "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },
+                    "dpi": { "type": "number", "minimum": 72, "maximum": 600 },
+                    "auto_rotate": { "type": "boolean" },
+                    "deskew": { "type": "boolean" },
+                    "denoise": { "type": "boolean" },
+                    "binarize": { "type": "boolean" },
+                }),
+                &["doc", "path"],
+            )),
+        t("ocr_folder", "OCR a folder", "Scan & OCR ▸ OCR a folder: make every PDF in folder searchable (an invisible text layer over the page images), one file at a time, language ja and engine auto unless you say otherwise. recursive also takes subfolders (links are never followed). Results go next to each source as <name>_ocr.pdf (suffix changes the _ocr; an empty suffix needs overwrite), or into output_dir under the same names and subfolders. A source is never replaced unless overwrite is true; without it a result that already exists is left alone and the file reported as skipped. Files that already have a text layer are skipped unless skip_with_text is false; password-protected files are skipped with the reason; a file that fails does not stop the run. Returns ok / skipped / failed / words counts and per file: status (ok, skipped, failed), output or reason. A run takes at most 1000 PDFs, 256 MiB per file and 4 GiB in all (larger folders are refused with an error before anything is read). Paths honour root. Needs the engines only for files that must be read (ocr_status).")
+            .cmd("ocr.folder")
+            .with(schema(
+                json!({
+                    "folder": { "type": "string" },
+                    "recursive": { "type": "boolean", "description": "Also take the PDFs of subfolders (default false)." },
+                    "output_dir": { "type": "string", "description": "Write the results here, keeping the subfolder layout (default: beside each source)." },
+                    "suffix": { "type": "string", "description": "Added before .pdf (default _ocr beside the source, nothing with output_dir)." },
+                    "skip_with_text": { "type": "boolean", "description": "Leave files that already have a text layer alone (default true)." },
+                    "overwrite": { "type": "boolean", "description": "Replace results that exist, and allow results that would replace the source (default false)." },
+                    "max_files": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "Refuse a folder with more PDFs than this (default and most: 1000)." },
+                    "dpi": { "type": "number", "minimum": 72, "maximum": 600 },
+                    "language": { "type": "string", "enum": language_enum(), "description": "Document language (default ja)." },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"], "description": "Default auto." },
+                    "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },
+                    "skip_text_pages": { "type": "boolean", "description": "Leave pages that already have text alone (default true)." },
+                    "force_ocr": { "type": "boolean", "description": "Read even where the skip options would leave things alone (default false)." },
+                    "auto_rotate": { "type": "boolean" },
+                    "deskew": { "type": "boolean" },
+                    "denoise": { "type": "boolean" },
+                    "binarize": { "type": "boolean" },
+                }),
+                &["folder"],
+            )),
         t("ocr_status", "OCR status", "Whether text recognition is available, where it looks for models (release packages include them; a source build fetches them with `cargo xtask models`; PDFCRAFT_MODELS overrides), its languages, and the engines: ocrs (built in, models), tesseract (an installed program, with its path) and windows (the Windows built-in OCR, on Windows). The japanese entry says whether tesseract's jpn and jpn_vert language data are installed (language ja reads horizontal and, with jpn_vert, vertical text; ja-vert reads vertical-only pages) and where to get them.")
             .ro()
             .cmd("ocr.recognize")

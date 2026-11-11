@@ -70,6 +70,7 @@ struct Pending {
     open_revision: Option<usize>,
     a11y_now: bool,
     ocr_now: bool,
+    ocr_export_now: bool,
     scan_clean_now: bool,
     compare_now: bool,
     images_now: bool,
@@ -437,6 +438,16 @@ fn dialog_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, dialog: Dialog, req: &m
             let (go, cancel) = crate::ocr_ui::body(ui, app, &t);
             req.ocr_now = go;
             req.close = go || cancel;
+            return false;
+        }
+        Dialog::ExportOcrText => {
+            let (go, cancel) = crate::ocr_export_ui::body(ui, app, &t);
+            req.ocr_export_now = go;
+            req.close = go || cancel;
+            return false;
+        }
+        Dialog::OcrFolder => {
+            req.close = crate::ocr_folder_ui::body(ui, app, &t);
             return false;
         }
         Dialog::EnhanceScan => {
@@ -2243,6 +2254,9 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
     }
     if req.scan_clean_now {
         app.start_scan_clean();
+    }
+    if req.ocr_export_now {
+        app.start_ocr_export();
     }
     if req.compare_now {
         app.run_compare();

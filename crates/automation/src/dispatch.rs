@@ -864,6 +864,8 @@ impl Automation {
             "form_set_actions" => self.form_set_actions(&a)?,
             "ocr_status" => self.ocr_status()?,
             "ocr_recognize_files" => self.ocr_recognize_files(&a)?,
+            "export_text" => self.export_text(&a)?,
+            "ocr_folder" => self.ocr_folder(&a)?,
             "ocr_words" => self.ocr_words(&a)?,
             "ocr_review_apply" => self.ocr_review_apply(&a)?,
             "ocr_dictionary" => self.ocr_dictionary(&a)?,

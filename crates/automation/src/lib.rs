@@ -30,6 +30,7 @@ pub mod mcp;
 mod measure;
 mod model3d;
 mod model_render;
+mod ocr_export;
 mod printing;
 mod reading;
 mod redact;
