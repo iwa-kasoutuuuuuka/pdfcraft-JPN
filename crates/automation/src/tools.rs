@@ -605,6 +605,24 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["doc", "page", "path"],
             )),
+        t("page_add_seal", "Add an electronic seal (電子印鑑)", "Stamp a Japanese seal (ハンコ) on a page as a vector Stamp comment, so it can be moved, resized and deleted like any stamp (comment_edit, comment_delete). at [x, y] is its centre in points from the top-left of the displayed page; size is its side in points (20-200, default 48, about 17 mm). kind \"name\" (default, 認印/名前印): a red ring (shape \"circle\", default, or \"square\" for a 角印) with name set vertically inside, 1-6 characters (a name of 4-6 characters is set in two columns; an all-ASCII name is set on one line, up to 12 characters), sized to fit inside the outline. kind \"date\" (データ印): a ring cut by two rules into three bands, org (a department or organisation, optional, up to 12 characters) on top, the date in the middle and name below. date is \"today\" (default) or yyyy-mm-dd; era true writes it with the Japanese era (令和8.11.11) instead of Western (2026.11.11). color is #RRGGBB or a name (default vermilion #D91F1A). Japanese text is drawn in the Gothic face from craft-fonts; a build without a Japanese face refuses Japanese text with an error saying so (an ASCII name still works). Undoable.")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "page": { "type": "integer", "minimum": 1 },
+                    "at": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                    "size": { "type": "number", "minimum": 20, "maximum": 200 },
+                    "kind": { "type": "string", "enum": ["name", "date"] },
+                    "name": { "type": "string", "minLength": 1, "maxLength": 12 },
+                    "org": { "type": "string", "maxLength": 12 },
+                    "date": { "type": "string", "description": "\"today\" or yyyy-mm-dd" },
+                    "era": { "type": "boolean" },
+                    "shape": { "type": "string", "enum": ["circle", "square"] },
+                    "color": { "type": "string" },
+                    "author": { "type": "string" },
+                }),
+                &["doc", "page", "at", "name"],
+            )),
         t("model_add", "Add a 3D model", "Add a 3D model (Acrobat: Rich Media ▸ Add 3D): the U3D or PRC file at path, recognised by its first bytes, as a 3D annotation in rect [x0, y0, x1, y1] (points from the top-left of the displayed page; each side 1–14400 pt; at most 256 MiB). Its poster, what prints and what readers show until the model is activated, is the picture at poster (a PDF page, poster_page default 1, or an image) fitted inside rect keeping its shape and centred; without poster, a frame labelled \"3D model\". activation: click (default), page_open or page_visible. name is its description (default: the file name). No views are added: readers open the model on its own default view. Undoable.")
             .with(schema(
                 json!({

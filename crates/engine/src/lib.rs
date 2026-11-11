@@ -50,6 +50,7 @@ mod rich_copy;
 pub mod scan_clean;
 mod scan_colours;
 mod scan_fields;
+pub mod seal;
 mod session;
 pub mod signature_image;
 pub mod signature_scan;

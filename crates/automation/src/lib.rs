@@ -33,6 +33,7 @@ mod model_render;
 mod printing;
 mod reading;
 mod redact;
+mod seal;
 mod signing;
 mod text_cache;
 mod tools;
