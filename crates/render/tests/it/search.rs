@@ -824,3 +824,56 @@ fn reference_and_find_join_past_empty_and_invisible_glyphs_after_a_soft_hyphen()
     assert_eq!(text.find("Mitarx beiterinnen"), vec![0..5]);
     assert_eq!(reference(&text, "Mitarx beiterinnen", false, false, usize::MAX), vec![0..5]);
 }
+
+/// The one hit `start..end`.
+fn at(start: usize, end: usize) -> Vec<Range<usize>> {
+    std::iter::once(start..end).collect()
+}
+
+fn variants(page: &PageText, query: &str) -> Vec<Range<usize>> {
+    page.find_opts_japanese(query, false, false, true, usize::MAX)
+}
+
+/// Japanese notation variants are matched only when asked for, and the hit covers the glyphs as
+/// written.
+#[test]
+fn ignoring_japanese_variants_matches_kana_width_and_old_kanji() {
+    let kana = page(&["ガ", "ッ", "コ", "ウ"]);
+    assert_eq!(variants(&kana, "がっこう"), at(0, 4));
+    assert!(kana.find_opts_japanese("がっこう", false, false, false, usize::MAX).is_empty());
+    assert!(kana.find("がっこう").is_empty());
+    let hira = page(&["が", "っ", "こ", "う"]);
+    assert_eq!(variants(&hira, "ガッコウ"), at(0, 4));
+
+    assert_eq!(variants(&page(&["東", "京", "大", "學"]), "大学"), at(2, 4));
+    assert_eq!(variants(&page(&["東", "京", "大", "学"]), "大學"), at(2, 4));
+    assert_eq!(variants(&page(&["國"]), "国"), at(0, 1));
+
+    let wide = page(&["Ｎ", "ｏ", "．", "１", "２", "３"]);
+    assert_eq!(variants(&wide, "123"), at(3, 6));
+    assert_eq!(variants(&wide, "no"), at(0, 2));
+    assert_eq!(variants(&page(&["1", "2", "3"]), "１２３"), at(0, 3));
+}
+
+/// A half-width voiced mark in a glyph of its own joins its kana, and the hit covers both glyphs.
+#[test]
+fn a_half_width_voiced_mark_in_its_own_glyph_joins_its_kana() {
+    let p = page(&["ｶ", "ﾞ", "ｷ", "ﾊ", "ﾟ"]);
+    assert_eq!(variants(&p, "ガ"), at(0, 2));
+    assert_eq!(variants(&p, "ガキ"), at(0, 3));
+    assert_eq!(variants(&p, "キ"), at(2, 3));
+    assert_eq!(variants(&p, "ぱ"), at(3, 5));
+    assert!(variants(&p, "カ").is_empty());
+    let one = page(&["ｶﾞｷﾞ"]);
+    assert_eq!(variants(&one, "ガギ"), at(0, 1));
+}
+
+/// With the option on, whole-word and case options keep working and a query with no match is empty.
+#[test]
+fn japanese_variants_keep_the_other_options() {
+    let p = page(&["Ａ", "Ｂ", "Ｃ", " ", "abc"]);
+    assert_eq!(p.find_opts_japanese("abc", false, false, true, usize::MAX).len(), 2);
+    assert_eq!(p.find_opts_japanese("abc", false, true, true, usize::MAX).len(), 2);
+    assert!(p.find_opts_japanese("zzz", false, false, true, usize::MAX).is_empty());
+    assert!(p.find_opts_japanese("abc", false, false, true, 0).is_empty());
+}

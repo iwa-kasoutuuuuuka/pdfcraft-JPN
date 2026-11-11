@@ -24,6 +24,8 @@ pub struct Find {
     /// Find options (Acrobat's: case-sensitive, whole words only).
     pub case_sensitive: bool,
     pub whole_words: bool,
+    /// Ignore Japanese notation variants (width, hiragana/katakana, old/new kanji).
+    pub ignore_variants: bool,
     /// Shown in the Search panel (Advanced Search) instead of the find bar.
     pub in_panel: bool,
 }
@@ -76,7 +78,8 @@ impl Find {
 impl DocView {
     /// Open the find bar (or focus it if already open).
     pub fn open_find(&mut self) {
-        let f = self.find.get_or_insert_with(Find::default);
+        // Japanese notation variants are ignored by default when the interface is Japanese.
+        let f = self.find.get_or_insert_with(|| Find { ignore_variants: crate::i18n::current().code() == "ja", ..Find::default() });
         f.focus = true;
     }
 
@@ -103,7 +106,11 @@ impl DocView {
         pages.sort();
         for &p in &pages {
             if let Some(text) = self.texts.get(&p) {
-                f.matches.extend(text.find_opts(&f.case_query, f.case_sensitive, f.whole_words).into_iter().map(|r| (p, r)));
+                f.matches.extend(
+                    text.find_opts_japanese(&f.case_query, f.case_sensitive, f.whole_words, f.ignore_variants, usize::MAX)
+                        .into_iter()
+                        .map(|r| (p, r)),
+                );
             }
         }
         f.matches.sort_by_key(|(p, r)| (*p, r.start));
@@ -128,7 +135,9 @@ impl DocView {
         // this arrival must not pull them back; the choice then becomes theirs to keep.
         let follow = f.follow_page(self.current);
         f.matches.retain(|(p, _)| *p != page);
-        f.matches.extend(text.find_opts(&f.case_query, f.case_sensitive, f.whole_words).into_iter().map(|r| (page, r)));
+        f.matches.extend(
+            text.find_opts_japanese(&f.case_query, f.case_sensitive, f.whole_words, f.ignore_variants, usize::MAX).into_iter().map(|r| (page, r)),
+        );
         f.matches.sort_by_key(|(p, r)| (*p, r.start));
         if let Follow::Active(from) = follow {
             f.current = f.first_at_or_after(from);
@@ -318,11 +327,18 @@ pub(super) fn find_bar(view: &mut DocView, pages: usize, area: Rect, ui: &mut eg
                         if icons::button(ui, "chevron-down", 26.0, false, &tip).clicked() {
                             step = Some(true);
                         }
-                        let opts = icons::button(ui, "settings-2", 26.0, find.case_sensitive || find.whole_words, tl!("Find options"));
+                        let opts = icons::button(
+                            ui,
+                            "settings-2",
+                            26.0,
+                            find.case_sensitive || find.whole_words || find.ignore_variants,
+                            tl!("Find options"),
+                        );
                         egui::Popup::menu(&opts).show(|ui| {
                             let a = ui.add(widgets::checkbox(&mut find.whole_words, tl!("Whole words only"))).changed();
                             let b = ui.add(widgets::checkbox(&mut find.case_sensitive, tl!("Case-sensitive"))).changed();
-                            if a || b {
+                            let c = ui.add(widgets::checkbox(&mut find.ignore_variants, tl!("Ignore Japanese variants"))).changed();
+                            if a || b || c {
                                 // Search again with the new options.
                                 find.case_query.clear();
                             }

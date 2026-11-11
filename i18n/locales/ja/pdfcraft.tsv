@@ -4635,3 +4635,10 @@ calendar weekday	We	水
 	Windows has no OCR language installed (add one in Settings, Time & language, Language & region)	Windows に OCR 用の言語が入っていません(設定 → 時刻と言語 → 言語と地域 で追加してください)
 	Windows OCR is only available on Windows	Windows OCR は Windows でのみ使えます
 	Skip	スキップ
+	Ignore Japanese variants	表記ゆれを無視（全角/半角・ひらがな/カタカナ・旧字体）
+	Find personal information	個人情報を検索
+	My Number (individual number)	マイナンバー
+	Phone numbers (Japan)	電話番号
+	Postal codes (Japan)	郵便番号
+	Email addresses (personal information)	メールアドレス
+	Street addresses (Japan, approximate)	住所（簡易判定）

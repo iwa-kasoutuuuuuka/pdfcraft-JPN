@@ -10407,3 +10407,27 @@ commands = []
 tools = []
 evidence = []
 notes = ""
+
+[[feature]]
+id = "view.find-japanese-variants"
+title = "Find ignoring Japanese notation variants (表記ゆれ)"
+area = "B"
+tier = "P2"
+milestone = "M3"
+status = "shipped"
+commands = ["edit.find"]
+tools = ["text_find"]
+evidence = ["crates/render/tests/it/search.rs::ignoring_japanese_variants_matches_kana_width_and_old_kanji", "crates/render/tests/it/search.rs::a_half_width_voiced_mark_in_its_own_glyph_joins_its_kana", "crates/automation/tests/it/japanese_text.rs::text_find_ignores_japanese_variants_when_asked"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. Find options (find bar and Search panel) and text_find ignore_variants treat full-width and half-width forms, hiragana and katakana (including half-width voiced marks) and a hand-written table of common old and new kanji as equal; on by default when the interface is Japanese. Highlights cover the glyphs as written."
+
+[[feature]]
+id = "protect.redact-japanese-pii"
+title = "Find personal information (Japan) and mark it for redaction"
+area = "G"
+tier = "P2"
+milestone = "M8"
+status = "shipped"
+commands = ["redact.mark"]
+tools = ["redact_find_pii"]
+evidence = ["crates/engine/src/pii_ja.rs::my_number_forms", "crates/engine/src/pii_ja.rs::phone_numbers", "crates/engine/src/pii_ja.rs::dates_and_other_numbers_are_not_phone_numbers", "crates/automation/tests/it/japanese_text.rs::redact_find_pii_marks_and_applies"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. My Number (check digit validated), Japanese phone numbers, postal codes, email addresses and an approximate street-address heuristic, read through the Japanese notation folding (full-width digits, dash variants). Hits are marked for review; nothing is removed until Apply Redactions. Find text and redact has a Find personal information option with category check boxes."

@@ -2,8 +2,9 @@
 //! (removing what they cover for good) or clear them.
 
 use pdfcraft_engine::{
-    Edit, HIDDEN, Hidden, NewAnnotation, REDACT_MAX_WORDS, REDACT_VALIDATORS, REDACTION_CODE_SETS, RedactPattern, RedactRegex, RedactValidator,
-    RedactionCodeSet, Shape, Style, find_pattern, rect_quad, redact_word_list, redacted_file_name,
+    Edit, HIDDEN, Hidden, NewAnnotation, PII_CATEGORIES, PII_DEFAULT_CATEGORIES, PiiCategory, REDACT_MAX_WORDS, REDACT_VALIDATORS,
+    REDACTION_CODE_SETS, RedactPattern, RedactRegex, RedactValidator, RedactionCodeSet, Shape, Style, find_pattern, find_pii, rect_quad,
+    redact_word_list, redacted_file_name,
 };
 use serde_json::{Value, json};
 
@@ -67,8 +68,9 @@ impl Automation {
         }
         let case_sensitive = a.opt_bool("case_sensitive")?.unwrap_or(false);
         let whole_words = a.opt_bool("whole_words")?.unwrap_or(false);
-        if (case_sensitive || whole_words) && a.get("find").is_none() && a.get("words").is_none() {
-            return Err(ToolError::InvalidArgs("case_sensitive and whole_words apply only to find or words".into()));
+        let ignore_variants = a.opt_bool("ignore_variants")?.unwrap_or(false);
+        if (case_sensitive || whole_words || ignore_variants) && a.get("find").is_none() && a.get("words").is_none() {
+            return Err(ToolError::InvalidArgs("case_sensitive, whole_words and ignore_variants apply only to find or words".into()));
         }
         if a.get("validate").is_some() && a.get("regex").is_none() {
             return Err(ToolError::InvalidArgs("validate applies only to regex".into()));
@@ -148,7 +150,11 @@ impl Automation {
                     (None, None) => needles
                         .iter()
                         .enumerate()
-                        .flat_map(|(i, w)| text.find_opts(w, case_sensitive, whole_words).into_iter().map(move |h| (Some(i), h)))
+                        .flat_map(|(i, w)| {
+                            text.find_opts_japanese(w, case_sensitive, whole_words, ignore_variants, usize::MAX)
+                                .into_iter()
+                                .map(move |h| (Some(i), h))
+                        })
                         .collect(),
                 };
                 for (word, h) in hits {
@@ -183,6 +189,79 @@ impl Automation {
         out["marks_pending"] = json!(self.doc(a)?.redaction_marks());
         if a.get("words").is_some() {
             out["matched_words"] = json!(matched_words.iter().map(|(w, n)| json!({ "word": w, "marked": n })).collect::<Vec<_>>());
+        }
+        Ok(out)
+    }
+
+    /// `redact_find_pii`: find personal information as written in Japan (My Number, phone numbers,
+    /// postal codes, email addresses, street addresses) and, with `mark`, mark every hit for
+    /// redaction for review. Nothing is removed until `redact_apply`.
+    pub(crate) fn redact_find_pii(&mut self, a: &Args) -> Result<Value> {
+        let doc = self.doc(a)?;
+        let (id, n) = (doc.id, doc.info.pages.len());
+        let categories: Vec<PiiCategory> = match a.get("categories") {
+            None => PII_DEFAULT_CATEGORIES.to_vec(),
+            Some(_) => {
+                let ids: Vec<_> = PII_CATEGORIES.iter().map(|c| c.id()).collect();
+                let listed = a
+                    .strs("categories")?
+                    .into_iter()
+                    .map(|c| {
+                        PiiCategory::from_id(c).ok_or_else(|| ToolError::InvalidArgs(format!("unknown category {c:?}; allowed: {}", ids.join(", "))))
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                if listed.is_empty() {
+                    return Err(ToolError::InvalidArgs(format!("categories is empty; allowed: {}", ids.join(", "))));
+                }
+                listed
+            }
+        };
+        let pages: Vec<usize> = match a.opt_ints("pages")? {
+            Some(_) => self.pages(a, "pages")?,
+            None => (0..n).collect(),
+        };
+        let mark = a.opt_bool("mark")?.unwrap_or(false);
+        let author = a.opt_str("author")?.unwrap_or(DEFAULT_AUTHOR).to_string();
+        let overlay = a.opt_str("overlay")?.unwrap_or("").to_string();
+        let mut style = Style::default_for(&Shape::Redact { quads: Vec::new(), overlay: String::new(), look: Default::default() });
+        if let Some(c) = a.opt_str("fill")? {
+            style.fill = Some(parse_color(c)?);
+        }
+        let texts = self.page_texts(id, &pages)?;
+        let info = self.doc(a)?.info.clone();
+        let mut hits: Vec<Value> = Vec::new();
+        let mut marks: Vec<(usize, Vec<[f64; 8]>)> = Vec::new();
+        for (&p, text) in pages.iter().zip(&texts) {
+            for (category, range) in find_pii(text, &categories) {
+                let rects = text.line_rects(range.clone());
+                hits.push(json!({ "category": category.id(), "text": text.text_of(range), "page": p + 1, "rects": rects }));
+                let quads: Vec<[f64; 8]> = rects.into_iter().filter_map(|r| info.pages.get(p).map(|page| page.view_rect_to_quad(r))).collect();
+                if !quads.is_empty() {
+                    marks.push((p, quads));
+                }
+            }
+        }
+        let by_category: serde_json::Map<String, Value> =
+            categories.iter().map(|c| (c.id().to_string(), json!(hits.iter().filter(|h| h["category"] == c.id()).count()))).collect();
+        let mut out = json!({ "count": hits.len(), "by_category": by_category, "hits": hits });
+        if mark {
+            let count = marks.len();
+            if count > 0 {
+                let edits: Vec<Edit> = marks
+                    .into_iter()
+                    .map(|(page, quads)| {
+                        let shape = Shape::Redact { quads, overlay: overlay.clone(), look: Default::default() };
+                        Edit::AddAnnotation(NewAnnotation { page, shape, style: style.clone(), contents: String::new(), author: author.clone() })
+                    })
+                    .collect();
+                let edit = match <[Edit; 1]>::try_from(edits) {
+                    Ok([one]) => one,
+                    Err(edits) => Edit::Batch { label: "Mark for redaction".into(), edits },
+                };
+                self.apply(a, edit)?;
+            }
+            out["marked"] = json!(count);
+            out["marks_pending"] = json!(self.doc(a)?.redaction_marks());
         }
         Ok(out)
     }
