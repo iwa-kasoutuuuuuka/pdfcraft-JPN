@@ -43,6 +43,7 @@ mod open;
 pub mod optimizer;
 mod page_filter;
 mod pictures;
+pub mod pii_ja;
 pub mod print_raster;
 pub mod printcheck;
 mod protection;
@@ -142,6 +143,7 @@ pub use pdfcraft_sign as sign;
 pub use pdfcraft_sign::{SignOptions, SignatureInfo, Status as SignatureStatus, StatusCaptions, TrustStore};
 pub use pdfcraft_xfdf::Format as DataFormat;
 pub use pdfcraft_xfdf::{Outline as CommentOutline, comment_count, comment_outlines, comments_bounds, is_xfdf_comments};
+pub use pii_ja::{PII_CATEGORIES, PII_DEFAULT_CATEGORIES, PiiCategory, find_pii, find_pii_chars, is_valid_my_number};
 
 use bookmarks::outline_rows;
 pub use bookmarks::{BookmarkPage, BookmarkRow};

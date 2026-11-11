@@ -33,7 +33,8 @@ pub(crate) fn panel(ui: &mut egui::Ui, t: &Tokens, view: &mut DocView, pages: us
         w.inactive.bg_fill = t.hover;
         let a = ui.add(widgets::checkbox(&mut find.whole_words, tl!("Whole words only"))).changed();
         let b = ui.add(widgets::checkbox(&mut find.case_sensitive, tl!("Case-sensitive"))).changed();
-        if a || b {
+        let c = ui.add(widgets::checkbox(&mut find.ignore_variants, tl!("Ignore Japanese variants"))).changed();
+        if a || b || c {
             find.case_query.clear();
         }
     });

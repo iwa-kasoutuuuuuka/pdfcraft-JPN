@@ -275,6 +275,7 @@ pub fn tools() -> Vec<ToolDef> {
             .with(schema(json!({ "doc": doc(), "query": { "type": "string", "minLength": 1 }, "limit": { "type": "integer", "minimum": 1, "description": "Maximum matches (default 500). When another match exists, next holds start_page and skip to continue. complete is false for either additional matches or failed pages; an exhausted search with warnings has no next." },
                 "start_page": { "type": "integer", "minimum": 1, "description": "Page to start searching from (default 1)." },
                 "skip": { "type": "integer", "minimum": 0, "description": "Matches to pass over on start_page before returning any (default 0)." },
+                "ignore_variants": { "type": "boolean", "description": "Ignore Japanese notation variants (default false): full-width and half-width forms (ＡＢＣ and ABC, １２３ and 123, ｶﾀｶﾅ and カタカナ), hiragana and katakana (がっこう and ガッコウ), and old and new kanji forms (國 and 国). Highlights still cover the glyphs as written." },
                 "stop_at_limit": { "type": "boolean", "description": "Stop at the limit-th match without looking for another (default false). The answer then has stopped_at_limit; when true, complete is false and next is only where to resume, so following it may find nothing more." } }), &["doc", "query"])),
         t("page_rotate", "Rotate pages", "Rotate pages by a multiple of 90 degrees (positive is clockwise): the listed pages (default all), filtered like Acrobat's Rotate Pages by subset (all, even, odd page numbers) and orientation (all, landscape, portrait). Undoable.")
             .cmd("page.rotate")
@@ -689,6 +690,7 @@ pub fn tools() -> Vec<ToolDef> {
                 "words": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "maxItems": 1000 },
                 "case_sensitive": { "type": "boolean", "description": "Match letter case for find or words (default false)." },
                 "whole_words": { "type": "boolean", "description": "Match whole words for find or words (default false)." },
+                "ignore_variants": { "type": "boolean", "description": "Ignore Japanese notation variants for find or words (default false): full-width/half-width forms, hiragana/katakana and old/new kanji count as equal." },
                 "pattern": pattern_enum(),
                 "regex": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "Regular expression (Rust regex syntax), at most 1024 bytes (maxLength counts characters, the limit is bytes); every match is marked." },
                 "validate": { "type": "string", "enum": ["luhn", "mod97", "iban"], "description": "With regex: keep a match only if its checksum is valid (spaces and hyphens ignored)." },
@@ -698,6 +700,23 @@ pub fn tools() -> Vec<ToolDef> {
                 "code_set": { "type": "string", "enum": ["foia", "privacy-act"] },
                 "codes": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Redaction codes from code_set, e.g. [\"(b)(6)\"]." },
                 "fill": { "type": "string", "description": "#RRGGBB or a colour name." },
+                "author": { "type": "string" },
+            }),
+            &["doc"],
+        )),
+        t(
+            "redact_find_pii",
+            "Find personal information (Japan)",
+            "Find personal information as written in Japan and optionally mark it for redaction (nothing is removed until redact_apply; review the marks first). Categories: my-number (マイナンバー: twelve digits, grouped 4-4-4 or not, whose check digit is valid), phone (電話番号: landline, 070/080/090/050 mobile, 0120/0570/0800, with hyphens, spaces, brackets or none), postal-code (郵便番号: 〒123-4567, 123-4567), email, address (住所: a prefecture, a municipality ending in 市区町村郡 and a street number; a heuristic, off unless listed). Default categories: my-number, phone, postal-code, email. Full-width digits and letters and dash variants are read as ASCII; dates such as 2024-11-11 are not phone numbers. Returns hits with category, text, page and line rectangles in points (origin top-left), and by_category counts. With mark: true each hit is marked (undoable) and marked and marks_pending are returned. Text in images is not found; recognise it (OCR) first.",
+        )
+        .with(schema(
+            json!({
+                "doc": doc(),
+                "categories": { "type": "array", "items": { "type": "string", "enum": ["my-number", "phone", "postal-code", "email", "address"] }, "minItems": 1, "description": "Categories to look for (default: my-number, phone, postal-code, email)." },
+                "pages": pages("to search (default: all)"),
+                "mark": { "type": "boolean", "description": "Mark every hit for redaction (default false: only report)." },
+                "overlay": { "type": "string", "description": "With mark: text shown on the box once applied." },
+                "fill": { "type": "string", "description": "With mark: #RRGGBB or a colour name (default black)." },
                 "author": { "type": "string" },
             }),
             &["doc"],

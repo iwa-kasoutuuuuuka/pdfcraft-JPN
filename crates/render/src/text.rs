@@ -40,6 +40,7 @@ impl TextFilter {
     }
 }
 
+pub mod japanese;
 mod search;
 
 /// Whether `(x, y)` lies in or on the convex quadrilateral `quad`, whichever way it winds. A
@@ -151,6 +152,20 @@ impl PageText {
     /// Search with Acrobat's find options, returning at most `limit` glyph ranges.
     pub fn find_opts_limited(&self, needle: &str, case_sensitive: bool, whole_words: bool, limit: usize) -> Vec<std::ops::Range<usize>> {
         search::find(self, needle, case_sensitive, whole_words, limit)
+    }
+
+    /// Search with Acrobat's find options and, when `ignore_variants` is set, Japanese notation
+    /// variants ignored (full-width and half-width forms, hiragana and katakana, old and new
+    /// kanji; see [`japanese`]), returning at most `limit` glyph ranges.
+    pub fn find_opts_japanese(
+        &self,
+        needle: &str,
+        case_sensitive: bool,
+        whole_words: bool,
+        ignore_variants: bool,
+        limit: usize,
+    ) -> Vec<std::ops::Range<usize>> {
+        search::find_variants(self, needle, case_sensitive, whole_words, ignore_variants, limit)
     }
 
     /// Glyph ranges of the matches a character matcher finds in the page text (words and lines
