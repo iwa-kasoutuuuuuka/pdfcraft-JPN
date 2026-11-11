@@ -182,6 +182,9 @@ mod sys {
     use windows::Media::Ocr::OcrEngine;
     use windows::Storage::Streams::DataWriter;
 
+    /// The longest one block's recognition may take (the OS normally needs well under a second).
+    const RECOGNIZE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
+
     fn fail(e: impl std::fmt::Display) -> OcrError {
         OcrError::Recognize(format!("Windows OCR: {e}"))
     }
@@ -214,7 +217,18 @@ mod sys {
             writer.WriteBytes(bgra).map_err(fail)?;
             let buffer = writer.DetachBuffer().map_err(fail)?;
             let bitmap = SoftwareBitmap::CreateCopyFromBuffer(&buffer, BitmapPixelFormat::Bgra8, w as i32, h as i32).map_err(fail)?;
-            let result = self.0.RecognizeAsync(&bitmap).map_err(fail)?.join().map_err(fail)?;
+            // pdfcraft-JPN: wait with a deadline, so a recognition the OS never finishes can't
+            // hang the OCR worker (AsyncStatus 0 is Started).
+            let op = self.0.RecognizeAsync(&bitmap).map_err(fail)?;
+            let deadline = std::time::Instant::now() + RECOGNIZE_TIMEOUT;
+            while op.Status().map_err(fail)?.0 == 0 {
+                if std::time::Instant::now() >= deadline {
+                    let _ = op.Cancel();
+                    return Err(OcrError::Recognize(format!("Windows OCR did not finish within {} seconds", RECOGNIZE_TIMEOUT.as_secs())));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            let result = op.GetResults().map_err(fail)?;
             let mut out = Vec::new();
             for line in result.Lines().map_err(fail)? {
                 let mut words = Vec::new();

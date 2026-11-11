@@ -6359,7 +6359,8 @@ fn backgrounds_and_watermarks_from_files() {
 /// one go (needs the models: `cargo xtask models`; skipped without them).
 #[test]
 fn reading_a_page_at_a_time_finds_the_same_words() {
-    let settings = ocr::OcrSettings::default();
+    // The ocrs engine in English, as the web build reads (pdfcraft-JPN defaults to Japanese).
+    let settings = ocr::OcrSettings { engine: ocr::EngineChoice::Ocrs, language: "en".into(), ..Default::default() };
     let Ok(engines) = ocr::recognizers(&settings) else {
         eprintln!("skipped: OCR models not installed");
         return;
