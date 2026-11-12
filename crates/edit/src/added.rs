@@ -19,6 +19,7 @@ mod layout;
 mod store;
 mod types;
 mod vertical;
+pub mod vertical_doc;
 
 pub(crate) use draw::thai_glyph_resources;
 #[cfg(test)]

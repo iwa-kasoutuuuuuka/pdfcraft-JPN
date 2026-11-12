@@ -265,6 +265,7 @@ impl PdfCraftApp {
             organize_zoom: 1.0,
             combine_thumbs: Default::default(),
             image_import: None,
+            vertical_doc: None,
             custom_stamps: Vec::new(),
             stamp_draft: Default::default(),
             seal_draft: Default::default(),

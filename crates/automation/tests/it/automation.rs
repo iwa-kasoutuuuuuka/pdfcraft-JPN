@@ -14291,3 +14291,92 @@ fn grouped_existing_thai_body_edits_saves_reopens_and_undo_restores_original_gly
     assert_eq!(page_text(&mut a, reopened), [new, old]);
     assert_eq!(ok(&mut a, "content_list", json!({"doc":reopened}))["count"], 0, "editing existing text must not create Add Text objects");
 }
+
+/// 縦書き文書: 原稿用紙 from text with a paragraph break, ruby and a 、 that would start a column.
+#[test]
+fn vertical_japanese_documents_are_made_from_text() {
+    if pdfcraft_fonts::document_japanese_font_for_style(true, false).is_none() {
+        eprintln!("skipping: built without a craft-fonts Japanese face");
+        let dir = workdir("vertical-noface");
+        let mut a = auto(&dir);
+        // A build without the face says so and what to do.
+        match a.call("create_vertical_document", &json!({ "text": "あ" })) {
+            Err(ToolError::InvalidArgs(m)) => assert!(m.contains("no Japanese font") && m.contains("CRAFT_FONTS_DIR"), "{m}"),
+            other => panic!("expected a refusal, got {other:?}"),
+        }
+        return;
+    }
+    let dir = workdir("vertical");
+    let mut a = auto(&dir);
+    // 19 characters fill rows 2-20 of a 20-square column (the first square is the 字下げ): the 、
+    // would start the next column, so it hangs below the first. The second paragraph has ruby.
+    let text = format!("{}、いろは\n東京《とうきょう》で会う", "あ".repeat(19));
+    let made = ok(&mut a, "create_vertical_document", json!({ "text": text, "template": "genko", "output": "genko.pdf" }));
+    assert_eq!(made["pages"], 1);
+    assert_eq!(made["hung"], 1);
+    assert_eq!(made["columns"], 3, "two paragraphs, the first running on into a second column");
+    let doc = made["doc"].as_u64().unwrap();
+    // Right binding, here and in the saved file.
+    assert_eq!(ok(&mut a, "doc_initial_view", json!({ "doc": doc }))["initial_view"]["binding"], "right");
+    let saved = ok(&mut a, "doc_open", json!({ "path": "genko.pdf" }))["doc"].as_u64().unwrap();
+    assert_eq!(ok(&mut a, "doc_initial_view", json!({ "doc": saved }))["initial_view"]["binding"], "right");
+    // The text reads in order: column by column, right to left, the ruby not part of it.
+    for d in [doc, saved] {
+        let read = page_text(&mut a, d).concat().replace(['\n', ' '], "");
+        assert_eq!(read, format!("{}、いろは東京で会う", "あ".repeat(19)));
+    }
+    // ぶら下げ: the 、 hangs below the grid in the first (rightmost) column; いろは starts the second.
+    let page = made["page_size"].as_array().unwrap();
+    let (w, h) = (page[0].as_f64().unwrap(), page[1].as_f64().unwrap());
+    assert!(w > h, "原稿用紙 is landscape by default");
+    let rect = |a: &mut Automation, q: &str| -> Vec<f64> {
+        let found = ok(a, "text_find", json!({ "doc": doc, "query": q }));
+        found["matches"][0]["rects"][0].as_array().unwrap_or_else(|| panic!("{q} not found: {found}")).iter().map(|v| v.as_f64().unwrap()).collect()
+    };
+    let (first, second) = (rect(&mut a, "、"), rect(&mut a, "いろは"));
+    // 20 x 20 squares and a row of room below for a hung character, centred on the page.
+    let sq = ((h - 56.0) / 21.0).min((w - 56.0) / 21.0);
+    let bottom = (h - 21.0 * sq) / 2.0 + 20.0 * sq;
+    assert!(first[3] > bottom + 0.5 * sq, "the first column reaches into the hanging square: {first:?}, grid bottom {bottom}");
+    assert!(second[3] < bottom, "the second column ends inside the grid: {second:?}, grid bottom {bottom}");
+    assert!(first[0] > second[0], "columns run right to left: {first:?} {second:?}");
+}
+
+/// 便箋 and plain documents flow over pages and refuse what they cannot draw.
+#[test]
+fn vertical_binsen_and_plain_documents_flow_and_refuse_clearly() {
+    if pdfcraft_fonts::document_japanese_font_for_style(true, false).is_none() {
+        return;
+    }
+    let dir = workdir("vertical-flow");
+    std::fs::write(
+        dir.join("story.txt"),
+        format!("{}\n{}", "吾輩は猫である。名前はまだ無い。".repeat(40), "どこで生れたかとんと見当がつかぬ。".repeat(30)),
+    )
+    .unwrap();
+    let mut a = auto(&dir);
+    let binsen = ok(
+        &mut a,
+        "create_vertical_document",
+        json!({ "text_file": "story.txt", "template": "binsen", "page_size": "b5", "columns": 10, "font": "gothic", "font_size": 12 }),
+    );
+    assert!(binsen["pages"].as_u64().unwrap() >= 2, "{binsen}");
+    let plain = ok(&mut a, "create_vertical_document", json!({ "text_file": "story.txt", "template": "plain", "orientation": "landscape" }));
+    let page = plain["page_size"].as_array().unwrap();
+    assert!(page[0].as_f64().unwrap() > page[1].as_f64().unwrap());
+    let doc = plain["doc"].as_u64().unwrap();
+    assert!(page_text(&mut a, doc).concat().replace(['\n', ' '], "").starts_with("吾輩は猫である。名前はまだ無い。"));
+    // Clear refusals: an option out of range, a character the font lacks, a name that is not a template.
+    assert!(
+        matches!(a.call("create_vertical_document", &json!({ "text": "あ", "template": "binsen", "columns": 100 })), Err(ToolError::InvalidArgs(m)) if m.contains("don't fit"))
+    );
+    assert!(matches!(a.call("create_vertical_document", &json!({ "text": "あ\u{e01}" })), Err(ToolError::InvalidArgs(m)) if m.contains("line 1")));
+    assert!(matches!(a.call("create_vertical_document", &json!({ "text": "あ", "template": "tategaki" })), Err(ToolError::InvalidArgs(_))));
+    assert!(matches!(a.call("create_vertical_document", &json!({})), Err(ToolError::InvalidArgs(_))));
+    // An existing output file is kept unless asked.
+    std::fs::write(dir.join("kept.pdf"), b"keep").unwrap();
+    assert!(
+        matches!(a.call("create_vertical_document", &json!({ "text": "あ", "output": "kept.pdf" })), Err(ToolError::InvalidArgs(m)) if m.contains("overwrite"))
+    );
+    assert_eq!(std::fs::read(dir.join("kept.pdf")).unwrap(), b"keep");
+}

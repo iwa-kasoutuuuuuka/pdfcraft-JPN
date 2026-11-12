@@ -4,6 +4,18 @@ use super::{
     print_layer_states, print_raster, set_default_layer_state, source_kind, writable, write_full,
 };
 
+/// What [`Session::create_vertical_document`] made, besides the file.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct VerticalSummary {
+    pub pages: usize,
+    /// Columns of text, blank ones included.
+    pub columns: usize,
+    /// Characters hung below a column (ぶら下げ).
+    pub hung: usize,
+    /// The page size in points, as shown.
+    pub page: (f64, f64),
+}
+
 impl Session {
     /// The page count of another PDF (Replace Pages, Insert Pages dialogs).
     pub fn page_count_of(&self, name: &str, bytes: &Arc<Vec<u8>>) -> Result<usize, EditError> {
@@ -30,6 +42,17 @@ impl Session {
     /// refused, naming the line and the character (never set as `?`).
     pub fn create_from_text(&self, title: &str, text: &str) -> Result<Arc<Vec<u8>>, EditError> {
         self.write_new(&pdfcraft_create::from_text(title, text, pdfcraft_create::LETTER, 11.0)?)
+    }
+
+    /// A new vertical Japanese document (縦書き文書: 原稿用紙, 便箋 or plain) set from `options.text`,
+    /// right-bound (`/ViewerPreferences /Direction /R2L`). Refused with a message that says what to
+    /// change when no Japanese face is embedded, the text has a character the face lacks, or the
+    /// options don't fit the page.
+    pub fn create_vertical_document(&self, options: &pdfcraft_edit::VerticalOptions) -> Result<(Arc<Vec<u8>>, VerticalSummary), EditError> {
+        let made = guard(|| pdfcraft_edit::create_vertical_document(options))
+            .map_err(|_| EditError::Source("the vertical document could not be laid out".into()))??;
+        let summary = VerticalSummary { pages: made.pages, columns: made.columns, hung: made.hung, page: made.page };
+        Ok((self.write_new(&made.document)?, summary))
     }
 
     /// [`Self::create_from_text`] for a report PdfCraft writes from documents (comment summaries,

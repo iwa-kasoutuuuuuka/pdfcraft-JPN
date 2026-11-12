@@ -38,6 +38,7 @@ mod seal;
 mod signing;
 mod text_cache;
 mod tools;
+mod vertical_doc;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
