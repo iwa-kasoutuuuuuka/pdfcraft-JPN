@@ -172,7 +172,9 @@ fn plain_cells(para: &str, serif: bool) -> Result<Vec<Cell>, EditError> {
 
 /// The text's columns, first (rightmost) first. A cell that would overflow a column starts the
 /// next one, except one that may not start a line (、。」 and the like, 行頭禁則), which hangs
-/// past the column's end instead (ぶら下げ). Each paragraph starts a new column.
+/// past the column's end instead (ぶら下げ) — one cell at most, so a long run of them (ーーー…) still
+/// wraps instead of running off the page. A Latin word longer than a column is broken over columns.
+/// Each paragraph starts a new column.
 pub(super) fn columns(t: &AddedText) -> Result<Vec<Vec<Cell>>, EditError> {
     columns_styled(t, false)
 }
@@ -184,9 +186,8 @@ pub(super) fn columns_styled(t: &AddedText, serif: bool) -> Result<Vec<Vec<Cell>
     for para in t.text.split('\n') {
         let mut column: Vec<Cell> = Vec::new();
         let mut used = 0.0;
-        for cell in cells_styled(para, serif)? {
-            let l = cell.length(t);
-            let hangs = cell.text().chars().next().is_some_and(pdfcraft_fonts::no_line_start);
+        for (cell, l) in cells_styled(para, serif)?.into_iter().flat_map(|cell| fit_column(t, cell, length)) {
+            let hangs = used <= length && cell.text().chars().next().is_some_and(pdfcraft_fonts::no_line_start);
             if !column.is_empty() && used + l > length && !hangs {
                 out.push(std::mem::take(&mut column));
                 used = 0.0;
@@ -201,6 +202,46 @@ pub(super) fn columns_styled(t: &AddedText, serif: bool) -> Result<Vec<Vec<Cell>
         out.push(column);
     }
     Ok(out)
+}
+
+/// `cell` with its length, or a Latin word longer than a column in pieces that each fit one. The
+/// pieces are cut where the word's prefix widths say, as the typing layout cuts them.
+fn fit_column(t: &AddedText, cell: Cell, length: f64) -> Vec<(Cell, f64)> {
+    let l = cell.length(t);
+    let Cell::Sideways(word) = &cell else { return vec![(cell, l)] };
+    if l <= length || word.chars().count() < 2 {
+        return vec![(cell, l)];
+    }
+    let ends = prefix_ends(t, word);
+    let chars: Vec<char> = word.chars().collect();
+    let mut out = Vec::new();
+    let (mut from, mut start) = (0usize, 0.0);
+    while from < chars.len() {
+        // At least one character a piece, however narrow the column.
+        let mut to = from + 1;
+        while to < chars.len() && ends.get(to).is_some_and(|e| e - start <= length) {
+            to += 1;
+        }
+        let end = ends.get(to - 1).copied().unwrap_or(start);
+        out.push((Cell::Sideways(chars.get(from..to).unwrap_or_default().iter().collect()), end - start));
+        (from, start) = (to, end);
+    }
+    out
+}
+
+/// Where each character of a sideways word ends down the column: the width of the word up to and
+/// including it (never going back).
+fn prefix_ends(t: &AddedText, word: &str) -> Vec<f64> {
+    let mut prefix = String::new();
+    let mut last = 0.0f64;
+    word.chars()
+        .map(|c| {
+            prefix.push(c);
+            let end = Cell::Sideways(prefix.clone()).length(t);
+            last = if end.is_finite() { end.max(last) } else { last };
+            last
+        })
+        .collect()
 }
 
 /// How wide a column is: one pitch, and room for ruby on its right when it has any.
