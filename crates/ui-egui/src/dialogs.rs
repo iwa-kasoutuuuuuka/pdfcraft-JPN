@@ -2255,9 +2255,8 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
     if req.vertical_now && app.finish_vertical_document() {
         req.close = true;
     }
-    if dialog == Dialog::CreateVertical && (req.close || modal_closed) {
-        app.vertical_doc = None;
-    }
+    // Closing the vertical document dialog without creating (Esc, a click outside, Cancel) keeps
+    // the draft, so typed or loaded text comes back when it is opened again; creating clears it.
     if req.images_now {
         app.finish_image_import();
     } else if dialog == Dialog::CreateImages && app.dialog != Some(Dialog::CreateImages) {

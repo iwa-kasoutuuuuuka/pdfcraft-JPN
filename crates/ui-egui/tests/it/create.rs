@@ -429,3 +429,24 @@ fn vertical_japanese_dialog_creates_a_right_bound_document() {
     assert_eq!(docs[0].info.pages.len(), 1);
     assert!(docs[0].info.pages[0].width > docs[0].info.pages[0].height, "原稿用紙 is landscape");
 }
+
+/// Esc closes the vertical document dialog without losing what was typed: it is there again when
+/// the dialog is opened next.
+#[test]
+fn vertical_japanese_dialog_keeps_its_text_when_closed_with_escape() {
+    let mut h = egui_kittest::Harness::builder().with_size(egui::vec2(1200.0, 1000.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        assert!(app.execute("create.vertical"));
+        app
+    });
+    h.run_steps(3);
+    h.state_mut().vertical_doc.as_mut().unwrap().text = "吾輩は猫である。".into();
+    h.run_steps(2);
+    h.key_press(egui::Key::Escape);
+    h.run_steps(3);
+    assert!(h.state().dialog.is_none(), "Esc closes the dialog");
+    assert!(h.state_mut().execute("create.vertical"));
+    h.run_steps(3);
+    assert_eq!(h.state().vertical_doc.as_ref().map(|d| d.text.as_str()), Some("吾輩は猫である。"));
+}

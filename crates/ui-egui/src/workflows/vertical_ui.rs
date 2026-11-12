@@ -204,7 +204,14 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp) -> (bool, bool) {
 impl PdfCraftApp {
     /// Create ▸ Vertical Japanese document…
     pub(crate) fn create_vertical_dialog(&mut self) {
-        self.vertical_doc = Some(VerticalDraft::default());
+        // The draft of a dialog closed without creating comes back, text and settings.
+        match self.vertical_doc.as_mut() {
+            Some(d) => {
+                d.preview = None;
+                d.error = None;
+            }
+            None => self.vertical_doc = Some(VerticalDraft::default()),
+        }
         self.dialog = Some(crate::Dialog::CreateVertical);
     }
 
