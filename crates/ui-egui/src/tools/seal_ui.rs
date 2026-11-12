@@ -151,6 +151,8 @@ pub(crate) fn palette_section(app: &mut PdfCraftApp, ui: &mut Ui, t: &Tokens) {
         ui.selectable_value(&mut d.square, false, tl!("Round"));
         ui.selectable_value(&mut d.square, true, tl!("Square"));
     });
+    // Outlined fields, as in the Search panel: in a side panel a field's fill matches the panel.
+    widgets::begin_dialog(ui);
     egui::Grid::new("seal-fields").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
         let l = ui.label(tl!("Name:"));
         ui.add(widgets::line(&mut d.name).desired_width(140.0).char_limit(pdfcraft_engine::seal::MAX_SEAL_ASCII_CHARS)).labelled_by(l.id);
