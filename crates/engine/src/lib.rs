@@ -95,8 +95,9 @@ pub use pdfcraft_organize::view::{InitialView, Layout as InitialLayout, Magnific
 pub use pdfcraft_cos::{Algorithm, civil_from_days};
 pub use pdfcraft_create::{CONVERTIBLE, CreateError, ImageResolution, SourceKind, decode_text, source_kind};
 pub use pdfcraft_edit::added::{
-    CHAR_SPACING_LIMIT as ADDED_CHAR_SPACING_LIMIT, paste_place as added_paste_place, paste_rect as added_paste_rect, text_rect as added_text_rect,
-    text_width as added_text_width,
+    CHAR_SPACING_LIMIT as ADDED_CHAR_SPACING_LIMIT, CaretMove as VerticalCaretMove, VerticalEditLayout, VerticalGlyph, VerticalGlyphKind,
+    paste_place as added_paste_place, paste_rect as added_paste_rect, text_rect as added_text_rect, text_width as added_text_width,
+    word_at as vertical_word_at,
 };
 pub use pdfcraft_edit::paragraph_align;
 pub use pdfcraft_edit::{

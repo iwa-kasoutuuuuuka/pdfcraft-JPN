@@ -15,6 +15,9 @@ use crate::page_router::{Hit, Owner, PagePress};
 use crate::theme::Tokens;
 use crate::widgets;
 
+// pdfcraft-JPN: vertical text is typed in its columns.
+mod vertical_input;
+
 /// The colour of the warning under text the standard fonts can't draw.
 pub(crate) const UNDRAWABLE: Color32 = Color32::from_rgb(0xD7, 0x37, 0x3F);
 
@@ -114,6 +117,8 @@ pub struct ContentView {
     held: bool,
     undrawable: UndrawableMemo,
     layout: Option<(AddedText, f32, f64, [f64; 4])>,
+    /// pdfcraft-JPN: the columns of the vertical draft being typed.
+    vertical: vertical_input::VerticalMemo,
 }
 
 impl ContentView {
@@ -476,7 +481,14 @@ pub(crate) fn page_input(cx: PageToolContext<'_>, ccx: ContentCx<'_>, view: &mut
             let mut style = style.clone();
             style.text.clear();
             let page_width = info.pages.get(page).map_or(f64::INFINITY, |p| p.width as f64);
-            let rect = [at[0], at[1] - style.size * 1.2, (at[0] + 200.0).min(page_width), at[1]];
+            let rect = if style.vertical {
+                // pdfcraft-JPN: vertical text's first column is centred on the click and runs 200
+                // points down from it (to the page's foot), so the text starts where you clicked.
+                let right = (at[0] + 0.6 * style.size).min(page_width);
+                [right - 1.2 * style.size, (at[1] - 200.0).max(0.0), right, at[1]]
+            } else {
+                [at[0], at[1] - style.size * 1.2, (at[0] + 200.0).min(page_width), at[1]]
+            };
             style.rect = rect;
             cv.draft = Some(TextDraft { page, index: None, rect, text: String::new(), style, focus: true, selection: None, typing_from: None });
             consumed = true;
@@ -684,6 +696,10 @@ pub(crate) fn editor(ctx: &egui::Context, view: &mut DocView, info: &DocInfo, ad
         let source = draft.style.rect;
         if draft.index.is_some() && draft.text == draft.style.text {
             draft.rect = source;
+        } else if draft.style.vertical {
+            // pdfcraft-JPN: vertical text keeps its box's top and right edge and wraps into new
+            // columns at its length; it doesn't widen with the text as horizontal text does.
+            draft.rect = pdfcraft_engine::added_text_rect(&AddedText { rect: source, ..text.clone() });
         } else {
             let natural = ctx.fonts_mut(|f| f.layout_no_wrap(draft.text.clone(), font.clone(), Color32::BLACK).size().x) as f64 / zoom as f64;
             let width = natural.max(pdfcraft_engine::added_text_width(&text)) + 2.0;
@@ -692,7 +708,7 @@ pub(crate) fn editor(ctx: &egui::Context, view: &mut DocView, info: &DocInfo, ad
             draft.rect = [source[0], source[1], source[0] + width, source[3]];
             draft.rect = pdfcraft_engine::added_text_rect(&AddedText { rect: draft.rect, ..text.clone() });
         }
-        view.content.layout = Some((text, zoom, page_width, draft.rect));
+        view.content.layout = Some((text.clone(), zoom, page_width, draft.rect));
     }
     let r = screen_rect(&xf, info, page, draft.rect);
     let source_rect = draft.index.map(|_| screen_rect(&xf, info, page, draft.style.rect));
@@ -710,12 +726,30 @@ pub(crate) fn editor(ctx: &egui::Context, view: &mut DocView, info: &DocInfo, ad
         Some(pdfcraft_engine::TextAlign::Right) => 1.0,
         _ => 0.0,
     };
-    let at = r.min - egui::vec2((width - r.width()) * anchor, 0.0);
+    let mut at = r.min - egui::vec2((width - r.width()) * anchor, 0.0);
+    // pdfcraft-JPN: a vertical draft is shown in its columns, laid out from the box it was given
+    // (as `added_text_rect` lays it out), its first column at the box's right edge.
+    let vertical = draft.style.vertical.then(|| {
+        let l = vertical_input::layout(&view.content.vertical, &AddedText { rect: draft.style.rect, ..text.clone() });
+        let rect = pdfcraft_engine::added_text_rect(&AddedText { rect: draft.style.rect, text: String::new(), ..draft.style.clone() });
+        (l, rect[2], rect[3])
+    });
+    let vertical_frame = vertical.as_ref().map(|(l, right, top)| vertical_input::Placed { xf: &xf, info, page, right: *right, top: *top }.frame(l));
+    // The hidden text box covers the columns, its right edge on theirs (it is never narrower than egui's minimum).
+    let width = match vertical_frame {
+        Some(f) => {
+            let w = f.width().max(24.0);
+            at = egui::pos2(f.right() - w, f.top());
+            w
+        }
+        None => width,
+    };
     let background_ready = draft.index.is_some_and(|index| view.text_background.ready_added(page, index));
     let tokens = Tokens::get(ctx);
     let (mut commit, mut cancel, mut done) = (false, false, false);
     let mut undrawable = None;
     let memo = &view.content.undrawable;
+    let vertical_memo = &view.content.vertical;
     // Clicks outside the document (the Format text panel) keep the text open, as they keep a
     // paragraph being edited open.
     // Where the click that took the focus was: the pointer itself may be gone by then (a touch, a
@@ -733,7 +767,7 @@ pub(crate) fn editor(ctx: &egui::Context, view: &mut DocView, info: &DocInfo, ad
         .constrain(false)
         .show(ctx, |ui| {
             let Some(t) = view.content.draft.as_mut() else { return };
-            ui.set_width(r.width() + 64.0);
+            ui.set_width(if vertical_frame.is_some() { width } else { r.width() } + 64.0);
             if let Some(source_rect) = source_rect.filter(|_| !background_ready) {
                 ui.painter().rect_filled(source_rect.union(r).expand(1.0), CornerRadius::ZERO, Color32::WHITE);
             }
@@ -753,26 +787,75 @@ pub(crate) fn editor(ctx: &egui::Context, view: &mut DocView, info: &DocInfo, ad
             let before = t.text.clone();
             let input = input_id();
             t.claim_typing(ui.ctx(), doc_id);
+            // pdfcraft-JPN: in vertical text the keys that move the caret move it by the columns.
+            if let Some((l, ..)) = &vertical {
+                vertical_input::before_input(ui.ctx(), input, l);
+            }
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = 4.0;
-                let output = egui::TextEdit::multiline(&mut t.text)
-                    .font(font)
+                // A vertical draft's box draws nothing: a tiny transparent layout that still holds the text.
+                let mut hidden = |ui: &egui::Ui, text: &dyn egui::TextBuffer, wrap: f32| {
+                    let job = egui::text::LayoutJob::simple(text.as_str().to_owned(), egui::FontId::proportional(1.0), Color32::TRANSPARENT, wrap);
+                    ui.fonts_mut(|f| f.layout_job(job))
+                };
+                let edit = egui::TextEdit::multiline(&mut t.text)
+                    .font(font.clone())
                     .desired_width(width)
                     .desired_rows(1)
-                    .layouter(&mut layouter)
-                    // Keep the page editor's original inset; the theme's larger button padding
-                    // otherwise shifts narrow right-aligned boxes away from their text edge.
-                    .margin(egui::Margin::symmetric(4, 2))
                     .background_color(if background_ready { Color32::TRANSPARENT } else { Color32::WHITE })
-                    .text_color(color)
-                    .hint_text(tl!("Type text"))
-                    .id(input)
-                    .show(ui);
+                    .id(input);
+                let output = match vertical_frame {
+                    Some(frame) => {
+                        ui.scope(|ui| {
+                            let v = ui.visuals_mut();
+                            v.text_cursor.stroke.color = Color32::TRANSPARENT;
+                            v.text_cursor.preview = false;
+                            v.selection.bg_fill = Color32::TRANSPARENT;
+                            v.selection.stroke.color = Color32::TRANSPARENT;
+                            v.ime_composition.active_underline_stroke.color = Color32::TRANSPARENT;
+                            v.ime_composition.inactive_underline_stroke.color = Color32::TRANSPARENT;
+                            edit.layouter(&mut hidden)
+                                .margin(egui::Margin::ZERO)
+                                .min_size(egui::vec2(width, frame.height()))
+                                .text_color(Color32::TRANSPARENT)
+                                .show(ui)
+                        })
+                        .inner
+                    }
+                    None => edit
+                        .layouter(&mut layouter)
+                        // Keep the page editor's original inset; the theme's larger button padding
+                        // otherwise shifts narrow right-aligned boxes away from their text edge.
+                        .margin(egui::Margin::symmetric(4, 2))
+                        .text_color(color)
+                        .hint_text(tl!("Type text"))
+                        .show(ui),
+                };
                 let resp = output.response;
-                if let Some(cursor) = output.cursor_range {
-                    let chars = cursor.as_sorted_char_range();
+                // pdfcraft-JPN: the vertical text, its caret and selection, drawn in its columns.
+                let vertical_range = vertical.as_ref().map(|(_, right, top)| {
+                    let l = vertical_input::layout(vertical_memo, &AddedText { text: t.text.clone(), ..style.clone() });
+                    let placed = vertical_input::Placed { xf: &xf, info, page, right: *right, top: *top };
+                    let look = vertical_input::Look {
+                        font: &font,
+                        color,
+                        caret: crate::edit_text_ui::caret_color_on(Color32::WHITE),
+                        selection: SELECT_BLUE.gamma_multiply(0.35),
+                        hint: Color32::from_gray(0x99),
+                    };
+                    let range = vertical_input::after_input(ui, input, &resp.response, &placed, &l, &t.text, &look);
+                    let (p, s) = (range.primary.index.0, range.secondary.index.0);
+                    p.min(s)..p.max(s)
+                });
+                let chars = vertical_range.or_else(|| {
+                    output.cursor_range.map(|cursor| {
+                        let chars = cursor.as_sorted_char_range();
+                        chars.start.into()..chars.end.into()
+                    })
+                });
+                if let Some(chars) = chars {
                     let byte = |index: usize| t.text.char_indices().nth(index).map_or(t.text.len(), |(at, _)| at);
-                    t.selection = Some(byte(chars.start.into())..byte(chars.end.into()));
+                    t.selection = Some(byte(chars.start)..byte(chars.end));
                 }
                 // Each paragraph keeps its own alignment through the typing.
                 if t.text != before {
