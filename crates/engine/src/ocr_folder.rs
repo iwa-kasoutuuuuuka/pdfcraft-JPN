@@ -285,7 +285,6 @@ pub(crate) fn run_with(
     // Built when the first file needs reading, then reused. A failure to build is the same for every
     // file, so it ends the run instead of failing each file in turn.
     let mut recognizers: Option<Recognizers> = None;
-    let suffix = options.effective_suffix().to_string();
     for (i, found) in files.iter().enumerate() {
         if !progress(Progress { done: i, total, current: &found.path }) {
             report.cancelled = true;
@@ -303,8 +302,21 @@ pub(crate) fn run_with(
             report.push(path, FileStatus::Failed(format!("the result {} would replace another source file", target.display())));
             continue;
         }
+        // Asked between pages too, so a stop does not wait for a long file to finish.
+        let mut stopped = false;
+        let mut keep_going = || {
+            let go = progress(Progress { done: i, total, current: &found.path });
+            stopped |= !go;
+            go
+        };
         // Guarded: a panic in a decoder or an engine fails this file, not the run.
-        let outcome = crate::guard(|| one(options, &settings, &suffix, found, engines, &mut recognizers, &mut write));
+        let outcome = crate::guard(|| one(options, &settings, found, engines, &mut recognizers, &mut write, &mut keep_going));
+        if stopped {
+            // Nothing was written for this file.
+            report.push(path, FileStatus::Skipped("stopped before it was finished".into()));
+            report.cancelled = true;
+            break;
+        }
         match outcome {
             Ok(Ok(status)) => report.push(path, status),
             Ok(Err(Fatal(why))) => return Err(why),
@@ -321,13 +333,14 @@ struct Fatal(String);
 fn one(
     options: &FolderOptions,
     settings: &OcrSettings,
-    suffix: &str,
     found: &Found,
     engines: Engines<'_>,
     recognizers: &mut Option<Recognizers>,
     write: &mut impl FnMut(&Path, &[u8]) -> Result<(), String>,
+    keep_going: &mut impl FnMut() -> bool,
 ) -> Result<FileStatus, Fatal> {
     use FileStatus::{Failed, Skipped};
+    let suffix = options.effective_suffix();
     // Results of an earlier run sit beside their sources: they are not sources.
     if options.output_dir.is_none() && !suffix.is_empty() && !options.overwrite {
         let stem = found.relative.file_stem().and_then(std::ffi::OsStr::to_str).unwrap_or("");
@@ -369,7 +382,14 @@ fn one(
         *recognizers = Some(engines(settings).map_err(Fatal)?);
     }
     let Some(engines) = recognizers.as_ref() else { return Ok(Failed("no recognition engine".into())) };
-    let pages = job.run(engines, |_, _| true);
+    let mut stopped = false;
+    let pages = job.run(engines, |done, total| {
+        stopped |= done < total && !keep_going();
+        !stopped
+    });
+    if stopped {
+        return Ok(Skipped("stopped before it was finished".into()));
+    }
     if !pages.is_empty() && pages.iter().all(|p| p.skipped.is_some()) {
         return Ok(Skipped("every page already has text".into()));
     }

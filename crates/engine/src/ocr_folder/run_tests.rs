@@ -188,3 +188,27 @@ fn an_oversize_file_fails_alone() {
     let report = run_with(&o, &fake, write_file, |_| true).unwrap();
     assert!(matches!(status(&report, "a.pdf"), FileStatus::Failed(why) if why.contains("one file may be")), "{report:?}");
 }
+
+#[test]
+fn a_stop_takes_effect_between_the_pages_of_a_file() {
+    let dir = temp("stop-pages");
+    let page = {
+        let mut s = Session::new();
+        let text = s.create_from_text("t", "Scanned words on a picture").unwrap();
+        let id = s.open("text.pdf", None, text, None).unwrap();
+        export::Exporter::new(s.get(id).unwrap()).png(0, 100.0).unwrap()
+    };
+    let pages: Vec<(String, Vec<u8>)> = (0..3).map(|k| (format!("p{k}.png"), page.clone())).collect();
+    std::fs::write(dir.join("long.pdf"), Session::new().create_from_images(&pages).unwrap().to_vec()).unwrap();
+    let o = FolderOptions::new(&dir, OcrSettings::default());
+    let mut calls = 0;
+    // The first call is before the file, the second before its first page: stop after one page.
+    let report = run_with(&o, &fake, write_file, |_| {
+        calls += 1;
+        calls < 3
+    })
+    .unwrap();
+    assert!(report.cancelled, "{report:?}");
+    assert!(matches!(status(&report, "long.pdf"), FileStatus::Skipped(why) if why.contains("stopped")), "{report:?}");
+    assert!(!dir.join("long_ocr.pdf").exists(), "nothing is written for a stopped file");
+}
