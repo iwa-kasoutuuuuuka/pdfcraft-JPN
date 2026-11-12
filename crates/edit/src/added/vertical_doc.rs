@@ -606,6 +606,60 @@ fn flow_squares(paras: Vec<Vec<Sq>>, rows: usize, cols: &mut Vec<Col>, hung: &mu
         }
         cols.push(col);
     }
+    keep_ruby_over_its_squares(cols);
+}
+
+/// After 追い出し and ぶら下げ have moved squares on, a ruby may stand over squares that are no
+/// longer below it in its column. Each ruby keeps the part over the squares that still follow it
+/// there; the rest goes to the next square of the text in a grid column (never a hung one).
+fn keep_ruby_over_its_squares(cols: &mut [Col]) {
+    for c in 0..cols.len() {
+        // A hung square stands outside the grid: its ruby goes on to the next column.
+        let hung_ruby = cols.get_mut(c).and_then(|col| col.hung.as_mut()).and_then(|sq| sq.ruby.take());
+        // The hung square was one of the squares the ruby stood over; it no longer counts.
+        if let Some((clusters, span)) = hung_ruby {
+            give_ruby(cols, c + 1, 0, (clusters, span.saturating_sub(1).max(1)));
+        }
+        let len = cols.get(c).map_or(0, |col| col.items.len());
+        for j in 0..len {
+            let Some((row, Some((ruby, span)))) = cols.get(c).and_then(|col| col.items.get(j)).map(|(r, sq)| (*r, sq.ruby.clone())) else {
+                continue;
+            };
+            let items = cols.get(c).map_or(&[][..], |col| col.items.as_slice());
+            let below = (1..span).take_while(|&m| items.get(j + m).is_some_and(|(r, _)| *r == row + m)).count() + 1;
+            if below < span {
+                // With no later square to take the rest, the whole ruby stays over what is below.
+                let later = j + below < len || cols.get(c + 1..).is_some_and(|rest| rest.iter().any(|col| !col.items.is_empty()));
+                let (here, rest) = if later { split_ruby(ruby, span, below) } else { (Some((ruby, below)), None) };
+                if let Some((_, sq)) = cols.get_mut(c).and_then(|col| col.items.get_mut(j)) {
+                    sq.ruby = here;
+                }
+                if let Some(rest) = rest {
+                    if j + below < len {
+                        give_ruby(cols, c, j + below, rest);
+                    } else {
+                        give_ruby(cols, c + 1, 0, rest);
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Put `ruby` on the square at item `j` of column `c` (or the first square of a later column when
+/// that column has none), joining a ruby already there.
+fn give_ruby(cols: &mut [Col], c: usize, j: usize, (clusters, span): (Vec<ShapedCluster>, usize)) {
+    let Some(col) = cols.get_mut(c..).and_then(|rest| rest.iter_mut().find(|col| !col.items.is_empty())) else { return };
+    let at = if j < col.items.len() { j } else { 0 };
+    let Some((_, sq)) = col.items.get_mut(at) else { return };
+    sq.ruby = Some(match sq.ruby.take() {
+        Some((mut own, own_span)) => {
+            let mut joined = clusters;
+            joined.append(&mut own);
+            (joined, span.max(own_span))
+        }
+        None => (clusters, span),
+    });
 }
 
 struct Grid {
@@ -875,6 +929,41 @@ mod tests {
                 (cells.into_iter().collect(), c.hung.as_ref().map(|s| s.text().to_string()).unwrap_or_default())
             })
             .collect()
+    }
+
+    /// Every ruby as (column, row, its text, how many squares it stands over).
+    fn rubies(paras: &[&str], rows: usize) -> Vec<(usize, usize, String, usize)> {
+        let sq: Vec<Vec<Sq>> = paras.iter().map(|p| squares(p, true).unwrap()).collect();
+        let mut cols = Vec::new();
+        flow_squares(sq, rows, &mut cols, &mut 0);
+        let mut out = Vec::new();
+        for (c, col) in cols.iter().enumerate() {
+            for (r, s) in &col.items {
+                if let Some((clusters, span)) = &s.ruby {
+                    out.push((c, *r, clusters.iter().map(|k| k.text.as_str()).collect(), *span));
+                }
+            }
+            assert!(col.hung.as_ref().is_none_or(|h| h.ruby.is_none()), "a hung square has no ruby");
+        }
+        out
+    }
+
+    #[test]
+    fn a_ruby_follows_its_base_when_part_of_it_goes_down_to_the_next_column() {
+        if !have_face() {
+            return;
+        }
+        // 」。 can't start a column, so 京 goes down with them: 東京's ruby is split between the
+        // columns instead of standing over the empty square below 東.
+        let r = rubies(&["あい東京《とうきょう》」。"], 5);
+        assert_eq!(r.len(), 2, "{r:?}");
+        assert_eq!((r[0].0, r[0].1, r[0].3), (0, 3, 1), "{r:?}");
+        assert_eq!((r[1].0, r[1].1, r[1].3), (1, 0, 1), "{r:?}");
+        assert_eq!(format!("{}{}", r[0].2, r[1].2), "とうきょう");
+        // A stop inside a base that hangs keeps no ruby; the rest goes on to the next column.
+        let r = rubies(&["｜あいうえ、おか《るびるびるび》"], 5);
+        assert!(r.iter().all(|x| x.1 + x.3 <= 5), "{r:?}");
+        assert_eq!(r.iter().map(|x| x.2.as_str()).collect::<String>(), "るびるびるび", "{r:?}");
     }
 
     #[test]
