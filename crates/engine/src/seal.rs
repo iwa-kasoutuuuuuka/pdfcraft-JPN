@@ -473,14 +473,14 @@ pub fn seal_pdf(spec: &SealSpec) -> Result<Vec<u8>, String> {
     pdfcraft_cos::write_full(&doc, &pdfcraft_cos::SaveOptions::default()).map_err(|e| e.to_string())
 }
 
-/// The text a seal stands for: its comment's contents.
+/// The text a seal stands for: its comment's contents (印鑑 and what the seal reads).
 pub fn seal_description(spec: &SealSpec) -> String {
     let name = spec.name.trim();
     match spec.kind {
-        SealKind::Name => format!("Seal {name}"),
+        SealKind::Name => format!("印鑑 {name}"),
         SealKind::Date => {
             let date = seal_date_text(spec.date, spec.era).unwrap_or_default();
-            format!("Seal {} {date} {name}", spec.org.trim()).split_whitespace().collect::<Vec<_>>().join(" ")
+            format!("印鑑 {} {date} {name}", spec.org.trim()).split_whitespace().collect::<Vec<_>>().join(" ")
         }
     }
 }
