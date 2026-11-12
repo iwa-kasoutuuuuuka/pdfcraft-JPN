@@ -136,6 +136,26 @@ fn genko_columns_with_paired_digits_and_a_hung_stop_read_in_order() {
     assert_eq!(read.replace('\n', ""), text.replace('\n', ""), "{read}");
 }
 
+/// pdfcraft-JPN: a control character in the text (a form feed from a text dump) is left out, not
+/// drawn as "?" or kept in the text layer.
+#[test]
+fn a_control_character_in_a_vertical_document_is_left_out() {
+    if pdfcraft_fonts::document_japanese_font_for_style(true, false).is_none() {
+        eprintln!("skipping: built without a craft-fonts Jpan face");
+        return;
+    }
+    let made = crate::added::vertical_doc::create_vertical_document(&crate::added::vertical_doc::VerticalOptions::new(
+        "あい\u{000C}うえ\u{0001}お".to_string(),
+        crate::added::vertical_doc::Template::Genko,
+    ))
+    .unwrap();
+    let bytes = write_full(&made.document, &SaveOptions::default()).unwrap();
+    let mut renderer = pdfcraft_render::PageRenderer::new(Arc::new(bytes), pdfcraft_render::RenderConfig::default());
+    let out = renderer.render(pdfcraft_render::RenderRequest { page: 0, kind: pdfcraft_render::RequestKind::Text, scale: 1.0, ..Default::default() });
+    let read = out.text.expect("a text layer").plain_text();
+    assert_eq!(read.replace('\n', ""), "あいうえお", "{read:?}");
+}
+
 /// pdfcraft-JPN: 縦中横 and ルビ keep the page's text layer reading the base text only, in order.
 #[test]
 fn ruby_and_tate_chu_yoko_read_as_the_base_text() {
