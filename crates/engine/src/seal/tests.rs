@@ -53,6 +53,10 @@ fn dates_are_western_or_in_the_era() {
     assert_eq!(parse_seal_date("2026-1-5"), Some((2026, 1, 5)));
     assert_eq!(parse_seal_date("2026-02-30"), None);
     assert_eq!(parse_seal_date("tomorrow"), None);
+    // An era year or a two-digit year is not taken for a year of the common era.
+    assert_eq!(parse_seal_date("令和8年11月11日"), None);
+    assert_eq!(parse_seal_date("R8.11.11"), None);
+    assert_eq!(parse_seal_date("26-11-11"), None);
 }
 
 #[test]

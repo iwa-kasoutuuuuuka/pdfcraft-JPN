@@ -217,13 +217,22 @@ struct Col {
 
 /// Make a vertical Japanese document. A clear error when no Japanese face is embedded.
 pub fn create_vertical_document(o: &VerticalOptions) -> Result<VerticalCreated, EditError> {
+    // Line ends, tabs and other control characters (a form feed from a text dump) are made plain
+    // first, in the title and author too: a control character would be drawn as "?".
+    let cleaned = VerticalOptions {
+        text: plain_text(&o.text, true),
+        title: o.title.as_deref().map(|t| plain_text(t, false)),
+        author: o.author.as_deref().map(|a| plain_text(a, false)),
+        ..o.clone()
+    };
+    let o = &cleaned;
     if pdfcraft_fonts::document_japanese_font_for_style(o.serif, false).is_none() {
         return Err(EditError::Invalid(
             "this build of PdfCraft has no Japanese font embedded, so a vertical Japanese document can't be made; build it with CRAFT_FONTS_DIR pointing at a craft-fonts checkout"
                 .into(),
         ));
     }
-    let text = o.text.replace("\r\n", "\n").replace('\r', "\n");
+    let text = o.text.clone();
     if text.chars().count() > MAX_CHARS {
         return Err(EditError::Invalid(format!("the text is longer than {MAX_CHARS} characters")));
     }
@@ -233,6 +242,15 @@ pub fn create_vertical_document(o: &VerticalOptions) -> Result<VerticalCreated, 
             c.escape_debug(),
             u32::from(c)
         )));
+    }
+    for (what, field) in [("title", &o.title), ("author", &o.author)] {
+        if let Some((_, c)) = field.as_deref().and_then(|f| undrawable(f, o.serif)) {
+            return Err(EditError::Invalid(format!(
+                "the {what}: \"{}\" (U+{:04X}) can't be drawn in a vertical Japanese document: the Japanese font has no glyph for it",
+                c.escape_debug(),
+                u32::from(c)
+            )));
+        }
     }
     let landscape = o.landscape.unwrap_or(o.template == Template::Genko);
     let (pw, ph) = o.page_size.portrait();
@@ -245,6 +263,20 @@ pub fn create_vertical_document(o: &VerticalOptions) -> Result<VerticalCreated, 
     };
     finish(&mut doc, o, &out, page)?;
     Ok(VerticalCreated { document: doc, pages: out.pages.len(), columns: out.columns, hung: out.hung, page })
+}
+
+/// `s` with line ends as `\n` (or spaces, when `lines` is false), tabs as spaces, and every other
+/// control character left out.
+fn plain_text(s: &str, lines: bool) -> String {
+    let s = s.replace("\r\n", "\n").replace('\r', "\n");
+    s.chars()
+        .filter_map(|c| match c {
+            '\n' if lines => Some('\n'),
+            '\n' | '\t' => Some(' '),
+            c if c.is_control() => None,
+            c => Some(c),
+        })
+        .collect()
 }
 
 /// The first character, with its 1-based line, the Japanese face (or the standard fonts) can't draw.
@@ -520,7 +552,8 @@ fn flow_squares(paras: Vec<Vec<Sq>>, rows: usize, cols: &mut Vec<Col>, hung: &mu
         let mut i = 0;
         while i < para.len() {
             if row >= rows {
-                let run = para.iter().skip(i).take_while(|s| s.no_start()).count();
+                // One or more than one is all that matters: a long run is not counted at every column end.
+                let run = para.iter().skip(i).take_while(|s| s.no_start()).take(2).count();
                 if run == 1 {
                     // ぶら下げ.
                     if let Some(sq) = para.get(i) {
@@ -935,6 +968,10 @@ mod tests {
         assert!(create_vertical_document(&o).unwrap_err().to_string().contains("title"));
         let o = VerticalOptions::new("あ\u{0e01}", Template::Plain);
         assert!(create_vertical_document(&o).unwrap_err().to_string().contains("line 1"));
+        // The title is checked like the text.
+        let mut o = VerticalOptions::new("あ", Template::Genko);
+        o.title = Some("\u{0e01}".into());
+        assert!(create_vertical_document(&o).unwrap_err().to_string().contains("the title"));
         let mut o = VerticalOptions::new("あ", Template::Binsen);
         o.columns = Some(500);
         assert!(create_vertical_document(&o).is_err());

@@ -292,6 +292,17 @@ pub(crate) fn run_with(
             break;
         }
         let path = found.path.clone();
+        // A result never replaces another source of this run (`a.pdf` → `a_ocr.pdf` when a scan of
+        // that name is in the folder too) when overwrite is set: that source would be lost unread.
+        // Without overwrite an existing result is skipped anyway.
+        if options.overwrite
+            && let Ok(target) = target_of(options, found)
+            && !same_file(&target, &found.path)
+            && files.iter().any(|other| same_file(&target, &other.path))
+        {
+            report.push(path, FileStatus::Failed(format!("the result {} would replace another source file", target.display())));
+            continue;
+        }
         // Guarded: a panic in a decoder or an engine fails this file, not the run.
         let outcome = crate::guard(|| one(options, &settings, &suffix, found, engines, &mut recognizers, &mut write));
         match outcome {

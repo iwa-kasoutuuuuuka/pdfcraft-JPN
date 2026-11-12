@@ -170,7 +170,8 @@ fn phone_at(t: &[char], i: usize) -> Option<usize> {
             break;
         }
         match t.get(p) {
-            Some('-' | ' ') => p += 1,
+            // A separator only when digits follow: `09012345678 山田` ends at the space.
+            Some('-' | ' ') if is_digit(t.get(p + 1)) => p += 1,
             Some(')') if outer || inner => {
                 (outer, inner) = (false, false);
                 p += 1;
@@ -358,7 +359,9 @@ fn ends_address(c: char) -> bool {
     c.is_whitespace() || matches!(c, '、' | '。' | ',' | ';' | ':' | '(' | ')' | '「' | '」' | '『' | '』' | '[' | ']' | '\n')
 }
 
-fn addresses(t: &[char]) -> Vec<Range<usize>> {
+/// `particle[k]` is true where the text as written has a hiragana particle (folding turns hiragana
+/// into katakana, so a town written in katakana such as ニセコ is not taken for one).
+fn addresses(t: &[char], particle: &[bool]) -> Vec<Range<usize>> {
     let mut out = Vec::new();
     let mut i = 0;
     'scan: while i < t.len() {
@@ -372,14 +375,17 @@ fn addresses(t: &[char]) -> Vec<Range<usize>> {
                 t.iter().enumerate().skip(from).take(40).find(|(_, c)| ends_address(**c)).map_or_else(|| t.len().min(from + 40), |(k, _)| k);
             let span = t.get(from..span_end).unwrap_or_default();
             // A municipality within a dozen characters, then a number: 丁目, 番地 or digits.
-            let Some(marker) = span.iter().take(13).position(|c| matches!(c, '市' | '区' | '町' | '村' | '郡')).filter(|m| *m >= 1) else {
+            // The marker after the municipality's first character: 町田市, 市川市 and 郡山市 start with one.
+            let Some(marker) = span.iter().take(13).skip(1).position(|c| matches!(c, '市' | '区' | '町' | '村' | '郡')).map(|m| m + 1) else {
                 continue;
             };
             let after = span.get(marker + 1..).unwrap_or_default();
             let town_end = after.iter().position(char::is_ascii_digit).unwrap_or(after.len());
             let town = after.get(..town_end).unwrap_or_default();
-            // A sentence, not an address: a particle between the municipality and the number.
-            if town_end > 8 || town.iter().any(|c| matches!(c, 'ハ' | 'ヲ' | 'ニ' | 'デ' | 'ト' | 'モ' | 'ヘ')) {
+            // A sentence, not an address: a particle right after the municipality (区で, 区内に). Further
+            // in, a kana is part of the town's name (みなとみらい).
+            let town_at = from + marker + 1;
+            if town_end > 8 || (town_at..town_at + town.len().min(2)).any(|k| particle.get(k).copied().unwrap_or(false)) {
                 continue;
             }
             let Some(last) = after.iter().rposition(|c| c.is_ascii_digit() || matches!(c, '号' | '番' | '地' | '目')) else { continue };
@@ -409,7 +415,14 @@ pub fn find_pii_chars(categories: &[PiiCategory], chars: &[char]) -> Vec<(PiiCat
             PiiCategory::Phone => phones(&t),
             PiiCategory::PostalCode => postal_codes(&t),
             PiiCategory::Email => emails(&t),
-            PiiCategory::Address => addresses(&t),
+            PiiCategory::Address => {
+                let particle: Vec<bool> = folded
+                    .origin
+                    .iter()
+                    .map(|o| chars.get(o.clone()).is_some_and(|w| matches!(w, ['は' | 'を' | 'に' | 'で' | 'と' | 'も' | 'へ'])))
+                    .collect();
+                addresses(&t, &particle)
+            }
         };
         for r in found {
             let start = folded.origin.get(r.start).map(|o| o.start);
@@ -506,6 +519,10 @@ mod tests {
             assert_eq!(hits(p, &format!("電話：{ok}。")), [ok], "{ok}");
         }
         assert_eq!(hits(p, "TEL 03-1234-5678 / 090-1111-2222"), ["03-1234-5678", "090-1111-2222"]);
+        // An unseparated number followed by a space, as page text puts between words.
+        assert_eq!(hits(p, "09012345678 山田"), ["09012345678"]);
+        assert_eq!(hits(p, "TEL 0312345678 (代表)"), ["0312345678"]);
+        assert_eq!(hits(p, "0120123456 まで"), ["0120123456"]);
     }
 
     #[test]
@@ -569,6 +586,14 @@ mod tests {
         assert!(hits(a, "東京都内で3人").is_empty());
         assert!(hits(a, "東京都は2024年に条例を改正した").is_empty());
         assert!(hits(a, "京都府の面積は4612平方キロ").is_empty());
+        assert!(hits(a, "東京都港区で3人が").is_empty());
+        assert!(hits(a, "東京都千代田区内に5か所").is_empty());
+        // A municipality whose name starts with a marker, and towns written in kana.
+        assert_eq!(hits(a, "東京都町田市原町田1-2-3"), ["東京都町田市原町田1-2-3"]);
+        assert_eq!(hits(a, "千葉県市川市八幡1-1-1"), ["千葉県市川市八幡1-1-1"]);
+        assert_eq!(hits(a, "福島県郡山市朝日1-23-7"), ["福島県郡山市朝日1-23-7"]);
+        assert_eq!(hits(a, "神奈川県横浜市西区みなとみらい2-2-1"), ["神奈川県横浜市西区みなとみらい2-2-1"]);
+        assert_eq!(hits(a, "北海道虻田郡ニセコ町富士見1"), ["北海道虻田郡ニセコ町富士見1"]);
     }
 
     #[test]
