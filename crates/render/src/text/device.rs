@@ -144,7 +144,7 @@ fn merge(drawn: &[Drawn], text: String) -> Option<Drawn> {
 /// column is no wider than two glyphs. `None` for anything else.
 fn merge_column(drawn: &[Drawn], text: String, u: [f64; 2], n: [f64; 2], height: f64, wide: f64) -> Option<Drawn> {
     // Upright glyphs run along `u`; sideways ones already run down the column, along `n`.
-    if drawn.len() < 2 || wide > 2.0 * height || !drawn.iter().all(|d| compatible(u, d.1) || compatible(n, d.1)) {
+    if drawn.is_empty() || wide > 2.0 * height || !drawn.iter().all(|d| compatible(u, d.1) || compatible(n, d.1)) {
         return None;
     }
     let u2 = n;
@@ -167,6 +167,49 @@ fn merge_column(drawn: &[Drawn], text: String, u: [f64; 2], n: [f64; 2], height:
     });
     let direction = [u2[0] as f32, u2[1] as f32];
     Some((quarter_turn(u2[0], u2[1]), u2, TextGlyph { text, rect, quad, direction }))
+}
+
+/// pdfcraft-JPN: a vertical column that holds one character (the last of a paragraph) is one
+/// upright glyph, which on its own looks like a one-character horizontal line and would be read
+/// before every column. On a page with at least two columns of several characters running down
+/// (see [`merge_column`]), such a wide glyph whose top lines up with a column's top, and which
+/// stands among the columns, is turned into a column of its own.
+fn lone_column_glyphs(mut glyphs: Vec<Drawn>) -> Vec<Drawn> {
+    let down = |d: &[f32; 2]| d[1] > 0.99 && d[0].abs() < 0.01;
+    let columns: Vec<[f32; 4]> = glyphs.iter().filter(|g| down(&g.2.direction) && g.2.text.chars().nth(1).is_some()).map(|g| g.2.rect).collect();
+    if columns.len() < 2 {
+        return glyphs;
+    }
+    let (mut left, mut right) = (f32::INFINITY, f32::NEG_INFINITY);
+    let mut width = f32::INFINITY;
+    for r in &columns {
+        (left, right) = (left.min(r[0]), right.max(r[2]));
+        width = width.min(r[2] - r[0]);
+    }
+    if !(width.is_finite() && width > 0.0) {
+        return glyphs;
+    }
+    for g in &mut glyphs {
+        let r = g.2.rect;
+        let (w, h) = (r[2] - r[0], r[3] - r[1]);
+        let mut chars = g.2.text.chars();
+        let wide = matches!((chars.next(), chars.next()), (Some(c), None) if c >= '\u{3000}');
+        let upright = g.2.direction[0] > 0.99 && g.2.direction[1].abs() < 0.01;
+        if !(wide && upright && w > 0.0 && h > 0.0 && w <= 2.0 * width && h <= 2.0 * width) {
+            continue;
+        }
+        let centre = (r[0] + r[2]) / 2.0;
+        let among = centre >= left - 2.0 * width && centre <= right + 2.0 * width;
+        let aligned = columns.iter().any(|c| (c[1] - r[1]).abs() <= 0.5 * h);
+        if !(among && aligned) {
+            continue;
+        }
+        let one = [g.clone()];
+        if let Some(column) = merge_column(&one, g.2.text.clone(), [1.0, 0.0], [0.0, 1.0], f64::from(h), f64::from(w)) {
+            *g = column;
+        }
+    }
+    glyphs
 }
 
 /// The widest or tallest box (view-space points) a glyph, or the paint standing in for one, may
@@ -685,7 +728,7 @@ pub(crate) fn extract_page_filtered(pdf: &Pdf, page: usize, settings: &Interpret
     if dev.partial_replacement {
         return Err("a replacement text span mixes included and excluded content; disable the exclusions to count this page".into());
     }
-    let glyphs = dev.glyphs;
+    let glyphs = lone_column_glyphs(dev.glyphs);
     // Text on a curved path: glyphs that each continue the previous one's line while the
     // direction turns. Each such run is one line.
     let turned = |u: [f64; 2]| u[0].abs().min(u[1].abs()) > DIRECTION_TOLERANCE;

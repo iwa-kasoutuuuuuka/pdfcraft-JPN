@@ -66,6 +66,31 @@ fn vertical_japanese_text_reads_in_column_order() {
     assert!(text.lines().count() >= 2, "{text}");
 }
 
+/// pdfcraft-JPN: a column holding a single character (the last one of a paragraph) still reads
+/// after the columns to its right, not before them as a one-glyph horizontal line would.
+#[test]
+fn a_one_character_column_reads_in_its_place() {
+    if pdfcraft_fonts::document_japanese_font_for_style(false, false).is_none() {
+        eprintln!("skipping: built without a craft-fonts Jpan face");
+        return;
+    }
+    let mut doc = fixture();
+    // Ten characters fill a 200 pt column at 20 pt: the 21st stands alone in the third column.
+    let vertical = AddedText {
+        vertical: true,
+        rect: [300.0, 400.0, 500.0, 600.0],
+        text: "あいうえおかきくけこさしすせそたちつてとな".into(),
+        size: 20.0,
+        ..AddedText::default()
+    };
+    add_content(&mut doc, 2, &Content::Text(vertical.clone())).unwrap();
+    let bytes = write_incremental(&doc, &SaveOptions::default()).unwrap();
+    let mut renderer = pdfcraft_render::PageRenderer::new(Arc::new(bytes), pdfcraft_render::RenderConfig::default());
+    let out = renderer.render(pdfcraft_render::RenderRequest { page: 2, kind: pdfcraft_render::RequestKind::Text, scale: 1.0, ..Default::default() });
+    let text = out.text.expect("a text layer").plain_text();
+    assert_eq!(text.replace('\n', ""), vertical.text, "{text}");
+}
+
 /// pdfcraft-JPN: 縦中横 and ルビ keep the page's text layer reading the base text only, in order.
 #[test]
 fn ruby_and_tate_chu_yoko_read_as_the_base_text() {
