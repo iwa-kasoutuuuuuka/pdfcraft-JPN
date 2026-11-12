@@ -1613,6 +1613,32 @@ pub fn tools() -> Vec<ToolDef> {
             }),
             &["from"],
         )),
+        t(
+            "create_vertical_document",
+            "Create a vertical Japanese document",
+            "Create a new, unsaved vertical Japanese document (縦書き文書) from plain text and return it like doc_open (plus columns, hung and page_size). `text` (UTF-8) or `text_file` (a .txt path); Aozora-style ruby (｜親《るび》, 漢字《かんじ》) is drawn beside the base. template: genko (default; 原稿用紙, 20 x 20 squares a page by default in two halves of 10 columns around the centre fold, one character per square, columns right to left, each paragraph starting a new column with one square indented (字下げ); a 、。」） or small kana that would start a column is hung below the previous column (ぶら下げ), an opening bracket never ends a column; one or two half-width digits (or !!, !?, ?!) share a square (縦中横), any other half-width character takes a square of its own; optional title in the first column (indented three squares) and author in the second (bottom aligned), then one blank column; landscape A4 by default), binsen (便箋: vertical ruled lines, `columns` lines per page, text flowing in them) or plain (vertical text with margins, no lines). page_size a4 (default), a5, b4 or b5; orientation portrait or landscape (default landscape for genko, portrait otherwise); font mincho (default) or gothic; font_size in points (genko: at most the square, default 80 percent of it); columns (genko: squares across the page, default 20; binsen and plain: lines per page) and rows (genko only: squares per column, default 20); grid_colour green (default), red (red-brown) or #RRGGBB; margin in points (binsen and plain). The document is right-bound (/ViewerPreferences /Direction /R2L) and every column is one text span, so text extraction reads it in order. Fails with a message saying what to change when no Japanese font is embedded in the build, the text has a character the font lacks, or the options don't fit the page. `output` also writes the PDF to that path (an existing file is kept unless overwrite is true).",
+        )
+        .with(schema(
+            json!({
+                "text": { "type": "string" },
+                "text_file": { "type": "string", "description": "Path of a .txt file (UTF-8, or detected like doc_create)." },
+                "template": { "type": "string", "enum": ["genko", "binsen", "plain"] },
+                "page_size": { "type": "string", "enum": ["a4", "a5", "b4", "b5"] },
+                "orientation": { "type": "string", "enum": ["portrait", "landscape"] },
+                "font": { "type": "string", "enum": ["mincho", "gothic"] },
+                "font_size": { "type": "number", "minimum": 3, "maximum": 72 },
+                "columns": { "type": "integer", "minimum": 1, "maximum": 120 },
+                "rows": { "type": "integer", "minimum": 1, "maximum": 60 },
+                "grid_colour": { "type": "string", "description": "green, red or #RRGGBB." },
+                "margin": { "type": "number", "minimum": 0 },
+                "title": { "type": "string" },
+                "author": { "type": "string" },
+                "output": { "type": "string", "description": "Also write the PDF here." },
+                "overwrite": { "type": "boolean" },
+                "name": { "type": "string", "description": "Name for the new document (default from the title or file)." },
+            }),
+            &[],
+        )),
         t("doc_reduce", "Reduce file size", "Write a smaller copy of the document to `path` with Acrobat's Reduce File Size choices: colour and grey images above 225 ppi downsampled to 150 ppi and JPEG-compressed (medium quality), black-and-white images averaged down to 300 ppi above 450 ppi and each stored as CCITT Group 4 (or 1-bit Flate, once resampled or packed from more bits) whenever that is smaller, thumbnails dropped, identical fonts and images merged, unused objects dropped, compressed object streams. If the copy wouldn't be smaller, nothing is written and `written` is false. Images past what one run may decode stay as they are, counted in images_refused; streams it only stores with Flate past that stay LZW, uncounted. The open document is unchanged.")
             .cmd("optimize.reduce")
             .with(schema(json!({ "doc": doc(), "path": { "type": "string" } }), &["doc", "path"])),

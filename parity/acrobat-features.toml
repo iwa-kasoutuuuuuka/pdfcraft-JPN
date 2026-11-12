@@ -10407,3 +10407,15 @@ commands = []
 tools = []
 evidence = []
 notes = ""
+
+[[feature]]
+id = "create.vertical-japanese"
+title = "Create a vertical Japanese document from text (縦書き文書)"
+area = "J"
+tier = "P2"
+milestone = "M10"
+status = "shipped"
+commands = ["create.vertical"]
+tools = ["create_vertical_document"]
+evidence = ["crates/edit/src/added/vertical_doc.rs::a_stop_that_would_start_a_column_hangs_below_the_previous_one", "crates/edit/src/added/vertical_doc.rs::documents_are_right_bound_and_flow_over_pages", "crates/automation/tests/it/automation.rs::vertical_japanese_documents_are_made_from_text", "crates/automation/tests/it/automation.rs::vertical_binsen_and_plain_documents_flow_and_refuse_clearly"]
+notes = "PdfCraft Japanese fork. Not an Acrobat feature (Acrobat has no manuscript-paper template); listed so the tool and command are tracked. Templates: 原稿用紙 (20 x 20 squares, two halves of 10 around the centre fold, vector grid in green or red-brown, one character per square, columns right to left, 字下げ at each paragraph, 行頭禁則 by ぶら下げ of one character or 追い出し of the column's last character when two or more can't start a column, an opening bracket never ends a column, 縦中横 for one or two half-width digits, other half-width characters one per square, ruby over the base squares, optional title and author columns), 便箋 (vertical ruled lines, configurable line count and margin) and plain vertical text. Mincho or Gothic from craft-fonts (Type 3 glyphs, text extracted through one ActualText span per column), A4/A5/B4/B5, portrait or landscape, /ViewerPreferences /Direction /R2L. UI: Create, Vertical Japanese document dialog with a preview of the first page. Refused with a clear message when the build has no Japanese face (CRAFT_FONTS_DIR). Missing: kinsoku beyond a hung character or two, vertical alignment of tall Latin words, full-width Latin mapping, page numbers or header text in the fold."
