@@ -190,7 +190,7 @@ fn paint_glyph(painter: &egui::Painter, placed: &Placed<'_>, l: &VerticalEditLay
                             egui::epaint::TextShape::new(pos2(centre.x + size.y / 2.0, centre.y - size.x / 2.0), galley, color).with_angle(FRAC_PI_2),
                         );
                     }
-                    Form::Raised(by) => painter.galley(centre - size / 2.0 + vec2(by * em, -by * em), galley, color),
+                    Form::Raised(by) => painter.galley(centre - size / 2.0 + vec2(by * em, -0.7 * by * em), galley, color),
                     Form::Upright => painter.galley(centre - size / 2.0, galley, color),
                 }
             }
@@ -198,7 +198,14 @@ fn paint_glyph(painter: &egui::Painter, placed: &Placed<'_>, l: &VerticalEditLay
         VerticalGlyphKind::Sideways => {
             // Turned 90° clockwise about its top left: the text reads down from the cell's top,
             // its middle on the column's centre line.
-            let galley = painter.layout_no_wrap(g.text.clone(), font.clone(), color);
+            let mut galley = painter.layout_no_wrap(g.text.clone(), font.clone(), color);
+            // The interface font's Latin is wider than the PDF's standard font the layout measures
+            // with: fitted to its cell, so it doesn't run into the next character.
+            let (w, length) = (galley.size().x, cell.height());
+            if w > 0.0 && length > 1.0 && (w - length).abs() > 0.5 {
+                let size = (font.size * (length / w).clamp(0.5, 1.5)).max(1.0);
+                galley = painter.layout_no_wrap(g.text.clone(), FontId::new(size, font.family.clone()), color);
+            }
             let h = galley.size().y;
             painter.add(egui::epaint::TextShape::new(pos2(cell.center().x + h / 2.0, cell.top()), galley, color).with_angle(FRAC_PI_2));
         }
