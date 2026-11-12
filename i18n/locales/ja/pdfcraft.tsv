@@ -4635,3 +4635,21 @@ calendar weekday	We	水
 	Windows has no OCR language installed (add one in Settings, Time & language, Language & region)	Windows に OCR 用の言語が入っていません(設定 → 時刻と言語 → 言語と地域 で追加してください)
 	Windows OCR is only available on Windows	Windows OCR は Windows でのみ使えます
 	Skip	スキップ
+	Create vertical Japanese document	縦書き文書を作成
+	Create vertical Japanese document…	縦書き文書を作成…
+	Text (Aozora-style ruby such as 漢字《かんじ》 is supported)	テキスト(漢字《かんじ》のような青空文庫形式のルビが使えます)
+	Load a .txt file…	テキストファイルを読み込む…
+	Genkō yōshi (manuscript paper)	原稿用紙
+	Letter paper (ruled lines)	便箋(縦罫)
+	Plain	罫線なし
+	Mincho	明朝体
+	Gothic	ゴシック体
+	Font size (pt)	文字サイズ(pt)
+	Squares across	横のマス数
+	Lines per page	1 ページの行数
+	Squares per column	縦のマス数
+	Grid colour	罫線の色
+	Red-brown	赤茶
+	{pages} page(s); {hung} hung punctuation mark(s)	{pages} ページ、ぶら下げ {hung} 字
+	Preview first page	1 ページ目をプレビュー
+	Choose a text file	テキストファイルを選択
