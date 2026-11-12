@@ -164,6 +164,10 @@ pub fn seal_date_text((y, m, d): (i64, u32, u32), era: bool) -> Result<String, S
 pub fn parse_seal_date(s: &str) -> Option<(i64, u32, u32)> {
     let digits: Vec<&str> = s.split(|c: char| !c.is_ascii_digit()).filter(|p| !p.is_empty()).collect();
     let [y, m, d] = digits.as_slice() else { return None };
+    // A year of four digits: `令和8年` or `26-11-11` would otherwise be the year 8 or 26.
+    if y.len() != 4 {
+        return None;
+    }
     let date = (y.parse().ok()?, m.parse().ok()?, d.parse().ok()?);
     seal_date_text(date, false).ok()?;
     Some(date)
