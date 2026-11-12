@@ -37,7 +37,7 @@ pub(super) enum Cell {
 
 /// Whether `run` (the characters of a paragraph from `at`, `len` of them) is a 縦中横 group:
 /// one or two digits, or `!!`, `!?`, `?!`, standing between non-ASCII characters (or the paragraph's ends).
-fn is_combined(chars: &[char], at: usize, len: usize) -> bool {
+pub(super) fn is_combined(chars: &[char], at: usize, len: usize) -> bool {
     let Some(run) = chars.get(at..at + len) else { return false };
     let alone = at == 0 || chars.get(at - 1).is_none_or(|c| !c.is_ascii());
     let alone = alone && chars.get(at + len).is_none_or(|c| !c.is_ascii());
@@ -46,7 +46,7 @@ fn is_combined(chars: &[char], at: usize, len: usize) -> bool {
 }
 
 impl Cell {
-    fn text(&self) -> &str {
+    pub(super) fn text(&self) -> &str {
         match self {
             Cell::Upright(c) => &c.text,
             Cell::Sideways(s) | Cell::Combined(s) => s,
@@ -79,13 +79,19 @@ pub(super) fn column_length(t: &AddedText) -> f64 {
 
 /// `para` split into cells: Japanese runs shaped for vertical writing, one cell per cluster;
 /// everything else one sideways cell per word (its spaces kept on it).
+#[cfg(test)]
 fn cells(para: &str) -> Result<Vec<Cell>, EditError> {
+    cells_styled(para, false)
+}
+
+/// [`cells`] in the serif (Mincho) face when `serif`.
+pub(super) fn cells_styled(para: &str, serif: bool) -> Result<Vec<Cell>, EditError> {
     let mut out = Vec::new();
     for seg in ruby::ruby_spans(para) {
         match seg {
-            Segment::Plain(s) => out.extend(plain_cells(&s)?),
+            Segment::Plain(s) => out.extend(plain_cells(&s, serif)?),
             Segment::Ruby { base, ruby, .. } => {
-                let shape = |s: &str| pdfcraft_fonts::shape_japanese_vertical(s).map_err(|e| thai_error(e, s));
+                let shape = |s: &str| pdfcraft_fonts::shape_japanese_vertical_styled(s, serif).map_err(|e| thai_error(e, s));
                 out.push(Cell::Ruby { base: shape(&base)?, ruby: shape(&ruby)?, text: base });
             }
         }
@@ -94,13 +100,13 @@ fn cells(para: &str) -> Result<Vec<Cell>, EditError> {
 }
 
 /// [`cells`] for text without ruby markup.
-fn plain_cells(para: &str) -> Result<Vec<Cell>, EditError> {
+fn plain_cells(para: &str, serif: bool) -> Result<Vec<Cell>, EditError> {
     let mut out = Vec::new();
     let mut run = String::new();
     let mut latin = String::new();
     let flush_run = |run: &mut String, out: &mut Vec<Cell>| -> Result<(), EditError> {
         if !run.is_empty() {
-            let shaped = pdfcraft_fonts::shape_japanese_vertical(run).map_err(|e| thai_error(e, run))?;
+            let shaped = pdfcraft_fonts::shape_japanese_vertical_styled(run, serif).map_err(|e| thai_error(e, run))?;
             out.extend(shaped.into_iter().map(Cell::Upright));
             run.clear();
         }
@@ -144,12 +150,17 @@ fn plain_cells(para: &str) -> Result<Vec<Cell>, EditError> {
 /// next one, except one that may not start a line (、。」 and the like, 行頭禁則), which hangs
 /// past the column's end instead (ぶら下げ). Each paragraph starts a new column.
 pub(super) fn columns(t: &AddedText) -> Result<Vec<Vec<Cell>>, EditError> {
+    columns_styled(t, false)
+}
+
+/// [`columns`] in the serif (Mincho) face when `serif`.
+pub(super) fn columns_styled(t: &AddedText, serif: bool) -> Result<Vec<Vec<Cell>>, EditError> {
     let length = column_length(t);
     let mut out = Vec::new();
     for para in t.text.split('\n') {
         let mut column: Vec<Cell> = Vec::new();
         let mut used = 0.0;
-        for cell in cells(para)? {
+        for cell in cells_styled(para, serif)? {
             let l = cell.length(t);
             let hangs = cell.text().chars().next().is_some_and(pdfcraft_fonts::no_line_start);
             if !column.is_empty() && used + l > length && !hangs {
@@ -205,8 +216,6 @@ pub(super) fn draw_vertical(
         .map_err(|(e, c)| thai_error(e, &c.text))?;
     out.extend(format!("BT {}\n", t.fill_op()).bytes());
     let size = t.size;
-    // Standard-font text turned sideways sits with its x-height on the column's centre line.
-    let sideways_shift = 0.26 * size;
     let mut right = r[2];
     for column in &cols {
         let width = column_width(t, column);
@@ -221,83 +230,7 @@ pub(super) fn draw_vertical(
         let mut current: Option<&str> = None;
         let mut ruby_out: Vec<u8> = Vec::new();
         for cell in column {
-            match cell {
-                Cell::Upright(c) => {
-                    // The glyphs carry the face's vertical offsets from VERTICAL_ORIGIN: drawn
-                    // from there, each lands centred under the previous one.
-                    if let Some((name, code)) = shaped.code(c) {
-                        if current != Some(name) {
-                            out.extend(format!("/{name} {} Tf ", n(size)).bytes());
-                        }
-                        current = Some(name);
-                        let [ox, oy] = pdfcraft_fonts::VERTICAL_ORIGIN;
-                        out.extend(format!("1 0 0 1 {} {} Tm ", n(centre - ox * size), n(pen - oy * size)).bytes());
-                        out.extend(literal(&[code]));
-                        out.extend_from_slice(b" Tj\n");
-                    }
-                }
-                Cell::Combined(s) => {
-                    if current != Some(latin) {
-                        out.extend(format!("/{latin} {} Tf ", n(size)).bytes());
-                    }
-                    current = Some(latin);
-                    let natural = t.family.width(s, size, t.bold, t.italic);
-                    // Wider than an em: squeezed to fit. Centred on the column, on the em's middle.
-                    let squeeze = if natural > size { size / natural } else { 1.0 };
-                    if squeeze < 1.0 {
-                        out.extend(format!("{} Tz ", n(100.0 * squeeze)).bytes());
-                    }
-                    out.extend(format!("1 0 0 1 {} {} Tm ", n(centre - natural * squeeze / 2.0), n(pen - 0.86 * size)).bytes());
-                    out.extend(literal(&win_ansi(s)));
-                    out.extend_from_slice(b" Tj\n");
-                    if squeeze < 1.0 {
-                        out.extend_from_slice(b"100 Tz ");
-                    }
-                }
-                Cell::Ruby { base, ruby, .. } => {
-                    let [ox, oy] = pdfcraft_fonts::VERTICAL_ORIGIN;
-                    let mut at = pen;
-                    for c in base {
-                        if let Some((name, code)) = shaped.code(c) {
-                            out.extend(format!("/{name} {} Tf 1 0 0 1 {} {} Tm ", n(size), n(centre - ox * size), n(at - oy * size)).bytes());
-                            out.extend(literal(&[code]));
-                            out.extend_from_slice(b" Tj\n");
-                        }
-                        at -= c.advance * size + t.char_spacing;
-                    }
-                    // The ruby at half size, centred along the base, on its right. It is drawn after the
-                    // column, in a span of its own that stands for no text.
-                    let half = size / 2.0;
-                    let ruby_length: f64 = ruby.iter().map(|c| c.advance * half).sum();
-                    let mut rp = pen - (cell.length(t) - ruby_length) / 2.0;
-                    let rc = centre + 0.5 * size + 0.33 * size;
-                    for c in ruby {
-                        if let Some((name, code)) = shaped.code(c) {
-                            ruby_out.extend(format!("/{name} {} Tf 1 0 0 1 {} {} Tm ", n(half), n(rc - ox * half), n(rp - oy * half)).bytes());
-                            ruby_out.extend(literal(&[code]));
-                            ruby_out.extend_from_slice(b" Tj\n");
-                        }
-                        rp -= c.advance * half;
-                    }
-                    current = None;
-                }
-                Cell::Sideways(s) => {
-                    if current != Some(latin) {
-                        out.extend(format!("/{latin} {} Tf ", n(size)).bytes());
-                    }
-                    current = Some(latin);
-                    if t.char_spacing != 0.0 {
-                        out.extend(format!("{} Tc ", n(t.char_spacing)).bytes());
-                    }
-                    // Turned 90° clockwise: the baseline runs down the column.
-                    out.extend(format!("0 -1 1 0 {} {} Tm ", n(centre - sideways_shift), n(pen)).bytes());
-                    out.extend(literal(&win_ansi(s)));
-                    out.extend_from_slice(b" Tj\n");
-                    if t.char_spacing != 0.0 {
-                        out.extend_from_slice(b"0 Tc ");
-                    }
-                }
-            }
+            draw_cell(out, &mut ruby_out, &shaped, cell, t, latin, centre, pen, &mut current);
             pen -= cell.length(t);
         }
         out.extend_from_slice(b"EMC\n");
@@ -309,6 +242,103 @@ pub(super) fn draw_vertical(
     }
     out.extend_from_slice(b"ET\n");
     Ok(())
+}
+
+/// Draw one cell of a column whose centre line is `centre`, from `pen` (the cell's top) down, into
+/// `out`; a ruby goes into `ruby_out`, to be drawn after the column. `current` is the font the text
+/// state has selected.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn draw_cell<'a>(
+    out: &mut Vec<u8>,
+    ruby_out: &mut Vec<u8>,
+    shaped: &'a ShapedFonts,
+    cell: &Cell,
+    t: &AddedText,
+    latin: &'a str,
+    centre: f64,
+    pen: f64,
+    current: &mut Option<&'a str>,
+) {
+    let size = t.size;
+    // Standard-font text turned sideways sits with its x-height on the column's centre line.
+    let sideways_shift = 0.26 * size;
+    match cell {
+        Cell::Upright(c) => {
+            // The glyphs carry the face's vertical offsets from VERTICAL_ORIGIN: drawn
+            // from there, each lands centred under the previous one.
+            if let Some((name, code)) = shaped.code(c) {
+                if *current != Some(name) {
+                    out.extend(format!("/{name} {} Tf ", n(size)).bytes());
+                }
+                *current = Some(name);
+                let [ox, oy] = pdfcraft_fonts::VERTICAL_ORIGIN;
+                out.extend(format!("1 0 0 1 {} {} Tm ", n(centre - ox * size), n(pen - oy * size)).bytes());
+                out.extend(literal(&[code]));
+                out.extend_from_slice(b" Tj\n");
+            }
+        }
+        Cell::Combined(s) => {
+            if *current != Some(latin) {
+                out.extend(format!("/{latin} {} Tf ", n(size)).bytes());
+            }
+            *current = Some(latin);
+            let natural = t.family.width(s, size, t.bold, t.italic);
+            // Wider than an em: squeezed to fit. Centred on the column, on the em's middle.
+            let squeeze = if natural > size { size / natural } else { 1.0 };
+            if squeeze < 1.0 {
+                out.extend(format!("{} Tz ", n(100.0 * squeeze)).bytes());
+            }
+            out.extend(format!("1 0 0 1 {} {} Tm ", n(centre - natural * squeeze / 2.0), n(pen - 0.86 * size)).bytes());
+            out.extend(literal(&win_ansi(s)));
+            out.extend_from_slice(b" Tj\n");
+            if squeeze < 1.0 {
+                out.extend_from_slice(b"100 Tz ");
+            }
+        }
+        Cell::Ruby { base, ruby, .. } => {
+            let [ox, oy] = pdfcraft_fonts::VERTICAL_ORIGIN;
+            let mut at = pen;
+            for c in base {
+                if let Some((name, code)) = shaped.code(c) {
+                    out.extend(format!("/{name} {} Tf 1 0 0 1 {} {} Tm ", n(size), n(centre - ox * size), n(at - oy * size)).bytes());
+                    out.extend(literal(&[code]));
+                    out.extend_from_slice(b" Tj\n");
+                }
+                at -= c.advance * size + t.char_spacing;
+            }
+            // The ruby at half size, centred along the base, on its right. It is drawn after the
+            // column, in a span of its own that stands for no text.
+            let half = size / 2.0;
+            let ruby_length: f64 = ruby.iter().map(|c| c.advance * half).sum();
+            let mut rp = pen - (cell.length(t) - ruby_length) / 2.0;
+            let rc = centre + 0.5 * size + 0.33 * size;
+            for c in ruby {
+                if let Some((name, code)) = shaped.code(c) {
+                    ruby_out.extend(format!("/{name} {} Tf 1 0 0 1 {} {} Tm ", n(half), n(rc - ox * half), n(rp - oy * half)).bytes());
+                    ruby_out.extend(literal(&[code]));
+                    ruby_out.extend_from_slice(b" Tj\n");
+                }
+                rp -= c.advance * half;
+            }
+            *current = None;
+        }
+        Cell::Sideways(s) => {
+            if *current != Some(latin) {
+                out.extend(format!("/{latin} {} Tf ", n(size)).bytes());
+            }
+            *current = Some(latin);
+            if t.char_spacing != 0.0 {
+                out.extend(format!("{} Tc ", n(t.char_spacing)).bytes());
+            }
+            // Turned 90° clockwise: the baseline runs down the column.
+            out.extend(format!("0 -1 1 0 {} {} Tm ", n(centre - sideways_shift), n(pen)).bytes());
+            out.extend(literal(&win_ansi(s)));
+            out.extend_from_slice(b" Tj\n");
+            if t.char_spacing != 0.0 {
+                out.extend_from_slice(b"0 Tc ");
+            }
+        }
+    }
 }
 
 /// The first character vertical text can't draw: Thai, Arabic and Hebrew (vertical writing is for

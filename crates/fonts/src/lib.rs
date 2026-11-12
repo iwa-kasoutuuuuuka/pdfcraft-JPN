@@ -32,8 +32,8 @@ pub use script::{
     script_missing, script_outline,
 };
 pub use shaping::{
-    ShapedCluster, ShapedScript, VERTICAL_ORIGIN, arabic_glyph, arabic_has, face_glyph, hebrew_has, japanese_has, shape_arabic, shape_hebrew,
-    shape_japanese, shape_japanese_vertical, shape_thai, shaped_glyph, thai_has,
+    ShapedCluster, ShapedScript, VERTICAL_ORIGIN, arabic_glyph, arabic_has, face_glyph, hebrew_has, japanese_has, japanese_has_styled, shape_arabic,
+    shape_hebrew, shape_japanese, shape_japanese_vertical, shape_japanese_vertical_styled, shape_thai, shaped_glyph, thai_has,
 };
 pub use std14::{Match as Std14Match, Std14};
 
@@ -164,7 +164,7 @@ pub fn no_line_start(c: char) -> bool {
 }
 
 /// Characters a line must not end with (行末禁則): opening brackets.
-fn no_line_end(c: char) -> bool {
+pub fn no_line_end(c: char) -> bool {
     matches!(c, '「' | '『' | '（' | '［' | '｛' | '【' | '〔' | '〈' | '《' | '〘' | '〖' | '｢' | '“' | '‘' | '(' | '[' | '{')
 }
 

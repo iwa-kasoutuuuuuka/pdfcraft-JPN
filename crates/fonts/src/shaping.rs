@@ -31,6 +31,9 @@ pub enum ShapedScript {
     /// Japanese (kana, kanji, full-width forms and the other characters the standard fonts
     /// can't draw), in the Japanese sans document face (BIZ UDPGothic). pdfcraft-JPN.
     Japanese,
+    /// Japanese in the serif document face (Shippori Mincho or BIZ UDMincho), for vertical
+    /// documents set in Mincho (縦書き文書). pdfcraft-JPN.
+    JapaneseSerif,
 }
 
 impl ShapedScript {
@@ -40,6 +43,7 @@ impl ShapedScript {
             Self::Hebrew => crate::document_hebrew_font(false),
             Self::Thai => crate::document_thai_font(),
             Self::Japanese => crate::document_japanese_font_for_style(false, false),
+            Self::JapaneseSerif => crate::document_japanese_font_for_style(true, false),
         }
     }
 }
@@ -49,11 +53,13 @@ fn face(script: ShapedScript) -> Option<&'static (FontRef<'static>, ShaperData)>
     static HEBREW: OnceLock<Option<(FontRef<'static>, ShaperData)>> = OnceLock::new();
     static THAI: OnceLock<Option<(FontRef<'static>, ShaperData)>> = OnceLock::new();
     static JAPANESE: OnceLock<Option<(FontRef<'static>, ShaperData)>> = OnceLock::new();
+    static JAPANESE_SERIF: OnceLock<Option<(FontRef<'static>, ShaperData)>> = OnceLock::new();
     let cache = match script {
         ShapedScript::Arabic => &FACE,
         ShapedScript::Hebrew => &HEBREW,
         ShapedScript::Thai => &THAI,
         ShapedScript::Japanese => &JAPANESE,
+        ShapedScript::JapaneseSerif => &JAPANESE_SERIF,
     };
     cache
         .get_or_init(|| {
@@ -102,6 +108,12 @@ pub fn japanese_has(c: char) -> bool {
     face(ShapedScript::Japanese).is_some_and(|(font, _)| font.charmap().map(c).is_some())
 }
 
+/// [`japanese_has`] for the serif (Mincho) face when `serif`.
+pub fn japanese_has_styled(c: char, serif: bool) -> bool {
+    let script = if serif { ShapedScript::JapaneseSerif } else { ShapedScript::Japanese };
+    face(script).is_some_and(|(font, _)| font.charmap().map(c).is_some())
+}
+
 /// Shape `text` with the Japanese document face, one cluster per character, in typing order.
 /// Horizontal text: the clusters advance along x.
 pub fn shape_japanese(text: &str) -> Result<Vec<ShapedCluster>, GlyphError> {
@@ -119,7 +131,12 @@ pub const VERTICAL_ORIGIN: [f64; 2] = [0.5, 0.88];
 /// Each cluster's `advance` is its advance down the column, in em; glyph offsets are from
 /// [`VERTICAL_ORIGIN`].
 pub fn shape_japanese_vertical(text: &str) -> Result<Vec<ShapedCluster>, GlyphError> {
-    shape_script_dir(text, Direction::TopToBottom, ShapedScript::Japanese)
+    shape_japanese_vertical_styled(text, false)
+}
+
+/// [`shape_japanese_vertical`] in the serif (Mincho) document face when `serif`, else the sans one.
+pub fn shape_japanese_vertical_styled(text: &str, serif: bool) -> Result<Vec<ShapedCluster>, GlyphError> {
+    shape_script_dir(text, Direction::TopToBottom, if serif { ShapedScript::JapaneseSerif } else { ShapedScript::Japanese })
 }
 
 fn shape_script(text: &str, rtl: bool, kind: ShapedScript) -> Result<Vec<ShapedCluster>, GlyphError> {
@@ -138,12 +155,12 @@ fn shape_script_dir(text: &str, direction: Direction, kind: ShapedScript) -> Res
         ShapedScript::Arabic => script::ARABIC,
         ShapedScript::Hebrew => script::HEBREW,
         ShapedScript::Thai => script::THAI,
-        ShapedScript::Japanese => script::HAN,
+        ShapedScript::Japanese | ShapedScript::JapaneseSerif => script::HAN,
     });
     // Preserve the historical Arabic per-character mapping; Hebrew and Thai marks stay with their
     // base. Japanese is one character per cluster, so a line can break between any two.
     buffer.set_cluster_level(match kind {
-        ShapedScript::Arabic | ShapedScript::Japanese => BufferClusterLevel::Characters,
+        ShapedScript::Arabic | ShapedScript::Japanese | ShapedScript::JapaneseSerif => BufferClusterLevel::Characters,
         ShapedScript::Hebrew | ShapedScript::Thai => BufferClusterLevel::MonotoneGraphemes,
     });
     let shaped = shaper.shape(buffer, ShapeOptions::new());
