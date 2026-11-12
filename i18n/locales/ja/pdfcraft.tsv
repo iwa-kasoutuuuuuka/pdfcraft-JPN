@@ -4714,3 +4714,5 @@ calendar weekday	We	水
 	{pages} page(s); {hung} hung punctuation mark(s)	{pages} ページ、ぶら下げ {hung} 字
 	Preview first page	1 ページ目をプレビュー
 	Choose a text file	テキストファイルを選択
+	The results would replace the original files: add a suffix or choose another output folder	結果が元のファイルを置き換えてしまいます。接尾辞を付けるか、別の保存先フォルダーを選んでください
+	Could not start text recognition	テキスト認識を開始できませんでした

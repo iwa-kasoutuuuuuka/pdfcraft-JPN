@@ -243,6 +243,14 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> bool
     close
 }
 
+/// Whether two paths name the same folder (resolved when both exist, as written otherwise).
+fn same_folder(a: &std::path::Path, b: &std::path::Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(x), Ok(y)) => x == y,
+        _ => a == b,
+    }
+}
+
 impl PdfCraftApp {
     /// Start the run with the dialog's choices, on a worker thread (inline in tests).
     pub fn start_ocr_folder(&mut self) {
@@ -256,6 +264,16 @@ impl PdfCraftApp {
         options.recursive = s.recursive;
         options.skip_with_text = s.skip_with_text;
         options.overwrite = s.overwrite;
+        // The dialog promises the originals are never replaced: refuse the two set-ups whose results
+        // would land on the sources themselves.
+        let onto_sources = match s.output {
+            FolderOutput::Beside => s.suffix.trim().is_empty(),
+            FolderOutput::Folder => s.output_dir.as_deref().is_some_and(|out| same_folder(out, &options.folder)),
+        };
+        if onto_sources {
+            self.notify_tr("The results would replace the original files: add a suffix or choose another output folder");
+            return;
+        }
         match s.output {
             FolderOutput::Beside => options.suffix = Some(s.suffix.trim().to_string()),
             FolderOutput::Folder => {
@@ -302,7 +320,13 @@ impl PdfCraftApp {
         if self.run_inline {
             work();
         } else {
-            std::thread::Builder::new().name("pdfcraft-ocr-folder".into()).spawn(work).ok();
+            let spawned = std::thread::Builder::new().name("pdfcraft-ocr-folder".into()).spawn(work);
+            if spawned.is_err() {
+                // No worker: clear the run so the dialog does not wait for one forever.
+                self.ocr_folder.run = None;
+                self.notify_tr("Could not start text recognition");
+                return;
+            }
         }
         self.poll_ocr_folder();
     }

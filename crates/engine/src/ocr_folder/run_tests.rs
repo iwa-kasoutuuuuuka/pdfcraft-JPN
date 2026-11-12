@@ -140,6 +140,22 @@ fn the_source_is_replaced_only_when_overwrite_is_set() {
 }
 
 #[test]
+fn a_result_never_replaces_another_source_even_with_overwrite() {
+    let dir = temp("other-source");
+    std::fs::write(dir.join("a.pdf"), scan()).unwrap();
+    std::fs::write(dir.join("a_ocr.pdf"), scan()).unwrap();
+    let before = std::fs::read(dir.join("a_ocr.pdf")).unwrap();
+    let mut o = FolderOptions::new(&dir, OcrSettings::default());
+    o.overwrite = true;
+    let report = run_with(&o, &fake, write_file, |_| true).unwrap();
+    assert!(matches!(status(&report, "a.pdf"), FileStatus::Failed(why) if why.contains("another source")), "{report:?}");
+    // a_ocr.pdf is untouched and was read as a source of its own.
+    assert_eq!(std::fs::read(dir.join("a_ocr.pdf")).unwrap(), before);
+    assert!(matches!(status(&report, "a_ocr.pdf"), FileStatus::Ok { .. }), "{report:?}");
+    assert!(std::fs::read(dir.join("a_ocr_ocr.pdf")).is_ok());
+}
+
+#[test]
 fn files_that_have_text_need_no_engine_but_a_scan_without_one_ends_the_run_with_the_reason() {
     let dir = temp("noengine");
     std::fs::write(dir.join("typed.pdf"), typed()).unwrap();

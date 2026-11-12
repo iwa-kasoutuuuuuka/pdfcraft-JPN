@@ -112,3 +112,32 @@ fn ocr_a_folder_reports_each_file_and_keeps_going_past_a_bad_one() {
     assert_eq!(std::fs::read(dir.join("typed.pdf")).unwrap(), typed, "the original is untouched");
     assert!(!dir.join("typed_ocr.pdf").exists());
 }
+
+/// The dialog says the originals are never replaced: an empty suffix with overwrite on starts no run
+/// and leaves the source as it was.
+#[test]
+fn ocr_a_folder_refuses_to_write_results_onto_the_originals() {
+    let dir = temp("onto-sources");
+    let typed = Session::new().create_from_text("t", "Already typed").unwrap().to_vec();
+    std::fs::write(dir.join("typed.pdf"), &typed).unwrap();
+    let mut h = Harness::builder().with_size(egui::vec2(1400.0, 900.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        app.run_inline = true;
+        app
+    });
+    h.run_steps(2);
+    assert!(h.state_mut().execute("ocr.folder"));
+    h.run_steps(2);
+    let s = &mut h.state_mut().ocr_folder;
+    s.folder = Some(dir.clone());
+    s.suffix = "  ".into();
+    s.overwrite = true;
+    s.skip_with_text = false;
+    h.state_mut().start_ocr_folder();
+    h.run_steps(2);
+    assert!(h.state().ocr_folder.report.is_none(), "no run started");
+    let toast = h.state().toast.clone().map(|t| t.0).unwrap_or_default();
+    assert!(toast.contains("replace the original"), "{toast}");
+    assert_eq!(std::fs::read(dir.join("typed.pdf")).unwrap(), typed, "the original is untouched");
+}
