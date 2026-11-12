@@ -401,3 +401,31 @@ fn a_blank_page_is_on_the_system_regions_paper() {
         );
     }
 }
+
+#[test]
+fn vertical_japanese_dialog_creates_a_right_bound_document() {
+    use egui_kittest::{Harness, kittest::Queryable};
+    let mut h = Harness::builder().with_size(egui::vec2(1200.0, 1000.0)).build_eframe(|_cc| {
+        let mut app = PdfCraftApp::new();
+        app.set_option("language", "en").unwrap();
+        assert!(app.execute("create.vertical"));
+        app
+    });
+    h.run_steps(3);
+    assert!(h.state().vertical_doc.is_some(), "Create ▸ Vertical Japanese document opens the dialog");
+    h.state_mut().vertical_doc.as_mut().unwrap().text = "吾輩は猫である。名前はまだ無い。\nどこで生れたか、とんと見当がつかぬ。".into();
+    h.run_steps(2);
+    h.get_by_label("Create").click();
+    h.run_steps(3);
+    if pdfcraft_fonts::document_japanese_font_for_style(true, false).is_none() {
+        // Without the face the dialog stays open and says why.
+        assert!(h.state().vertical_doc.as_ref().is_some_and(|d| d.error.as_deref().is_some_and(|e| e.contains("no Japanese font"))));
+        assert!(h.state().session.docs().is_empty());
+        return;
+    }
+    assert!(h.state().vertical_doc.is_none(), "the dialog closes once the document is made");
+    let docs = h.state().session.docs();
+    assert_eq!(docs.len(), 1);
+    assert_eq!(docs[0].info.pages.len(), 1);
+    assert!(docs[0].info.pages[0].width > docs[0].info.pages[0].height, "原稿用紙 is landscape");
+}

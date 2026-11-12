@@ -317,6 +317,7 @@ impl Automation {
             "page_set_box" => self.page_set_box(&a)?,
             "page_transition_set" => self.page_transition_set(&a)?,
             "doc_create" => self.doc_create(&a)?,
+            "create_vertical_document" => self.create_vertical_document(&a)?,
             "xfa_to_static" => self.apply(&a, Edit::XfaToStatic)?,
             "doc_flatten" => {
                 let (comments, fields) = (a.opt_bool("comments")?.unwrap_or(true), a.opt_bool("fields")?.unwrap_or(true));
@@ -725,6 +726,7 @@ impl Automation {
             "doc_export_data" => self.doc_export_data(&a)?,
             "doc_import_data" => self.doc_import_data(&a)?,
             "redact_mark" => self.redact_mark(&a)?,
+            "redact_find_pii" => self.redact_find_pii(&a)?,
             "redact_apply" => self.redact_apply(&a)?,
             "redact_clear" => self.redact_clear(&a)?,
             "doc_hidden_info" => self.doc_hidden_info(&a)?,
@@ -826,6 +828,7 @@ impl Automation {
             "comment_list" => self.comment_list(&a)?,
             "comment_add" => self.comment_add(&a)?,
             "stamp_custom" => self.stamp_custom(&a)?,
+            "page_add_seal" => self.page_add_seal(&a)?,
             "model_add" => self.model_add(&a)?,
             "comment_reply" => self.comment_reply(&a)?,
             "comment_set_status" => self.comment_set_status(&a)?,
@@ -864,6 +867,8 @@ impl Automation {
             "form_set_actions" => self.form_set_actions(&a)?,
             "ocr_status" => self.ocr_status()?,
             "ocr_recognize_files" => self.ocr_recognize_files(&a)?,
+            "export_text" => self.export_text(&a)?,
+            "ocr_folder" => self.ocr_folder(&a)?,
             "ocr_words" => self.ocr_words(&a)?,
             "ocr_review_apply" => self.ocr_review_apply(&a)?,
             "ocr_dictionary" => self.ocr_dictionary(&a)?,

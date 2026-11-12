@@ -103,6 +103,8 @@ pub(crate) type GridFile = (String, Result<Vec<u8>, std::path::PathBuf>);
 pub enum Dialog {
     WordCount,
     CreateImages,
+    /// Create ▸ Vertical Japanese document (縦書き文書).
+    CreateVertical,
     Properties(PropsTab),
     About,
     Shortcuts,
@@ -179,6 +181,10 @@ pub enum Dialog {
     RecognizeText,
     /// Scan & OCR ▸ Enhance scanned file.
     EnhanceScan,
+    /// Scan & OCR ▸ Export recognized text (txt / Word).
+    ExportOcrText,
+    /// Scan & OCR ▸ OCR a folder.
+    OcrFolder,
     /// The JavaScript console (⌘J).
     JsConsole,
     /// Document JavaScripts.

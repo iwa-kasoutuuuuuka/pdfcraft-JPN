@@ -164,7 +164,7 @@ fn edges_are_primary_finite_in_order_and_capped() {
 }
 
 /// The page modules: the per-page chain in `canvas::document_area` and what it calls.
-const PAGE_MODULES: [&str; 38] = [
+const PAGE_MODULES: [&str; 39] = [
     "canvas.rs",
     "canvas/page_input.rs",
     "canvas/area.rs",
@@ -203,6 +203,7 @@ const PAGE_MODULES: [&str; 38] = [
     "canvas/signature_drag.rs",
     "tools/calc_order_ui.rs",
     "tools/stamps_ui.rs",
+    "tools/seal_ui.rs",
 ];
 
 /// What a file that acts on the pages uses: the pointer, a tool's or the comments' page context,

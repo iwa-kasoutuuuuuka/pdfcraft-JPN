@@ -4278,6 +4278,18 @@ evidence = ["crates/annot/src/tests.rs::stamps_draw_their_label_and_by_line", "c
 notes = "12 standard business stamps in PdfCraft's own design; ISO 32000 stamp names where defined. A stamp placed on a rotated page reads upright as the page is displayed (#1398)"
 
 [[feature]]
+id = "comment.stamps-seal"
+title = "Electronic seals (電子印鑑, ハンコ)"
+area = "E"
+tier = "P2"
+milestone = "M5"
+status = "shipped"
+commands = []
+tools = ["page_add_seal"]
+evidence = ["crates/engine/src/seal/tests.rs::a_name_is_set_vertically_and_fits_inside_the_circle", "crates/engine/src/seal/tests.rs::a_date_seal_has_three_bands_in_order", "crates/engine/src/seal/tests.rs::a_placed_seal_is_a_stamp_with_an_appearance_and_its_text", "crates/automation/tests/it/seal.rs::a_name_seal_is_a_stamp_comment_with_the_name_as_text", "crates/automation/tests/it/seal.rs::a_date_seal_has_the_organisation_date_and_name"]
+notes = "pdfcraft-JPN. Not an Acrobat feature: the Japanese 認印/名前印 (the name set vertically in a red circle or 角印 square) and データ印 (organisation, date and name in three bands). Placed as a vector Stamp comment (a custom stamp whose appearance is a generated one-page PDF), so it moves, resizes and deletes like any stamp; the Edit tab's stamp palette has a Seal section (name, kind, shape, department, date or era date, colour, size, preview). Text is the Gothic face from craft-fonts; a build without a Japanese face refuses Japanese text with a message saying so"
+
+[[feature]]
 id = "comment.stamps-sign-here"
 title = "Sign-here stamps"
 area = "E"
@@ -7021,6 +7033,30 @@ commands = []
 tools = []
 evidence = []
 notes = "Adobe cloud; import images from any source instead"
+
+[[feature]]
+id = "ocr.export-text"
+title = "Export recognized text (txt / Word), Japanese and vertical text aware"
+area = "I"
+tier = "P1"
+milestone = "M10"
+status = "shipped"
+commands = ["ocr.export_text"]
+tools = ["export_text"]
+evidence = ["crates/automation/tests/it/ocr_text_folder.rs::export_text_writes_txt_and_docx_in_reading_order_with_japanese_tags", "crates/engine/src/text_export.rs::scanned_pages_are_read_on_a_copy_when_asked_and_the_document_is_left_alone"]
+notes = "Scan & OCR > Export recognized text. Reading order with vertical columns right to left, one paragraph per block of lines. Word output tags the text as Japanese (w:lang eastAsia ja-JP, East Asian font slot) and writes vertical pages as tbRl sections (vertical auto/on/off). Optionally reads pages without a text layer first on a scratch copy (language ja, engine auto). Plain text separates pages with a numbered line or form feeds."
+
+[[feature]]
+id = "ocr.folder-batch"
+title = "OCR a whole folder into searchable PDFs"
+area = "I"
+tier = "P1"
+milestone = "M10"
+status = "shipped"
+commands = ["ocr.folder"]
+tools = ["ocr_folder"]
+evidence = ["crates/automation/tests/it/ocr_text_folder.rs::ocr_folder_skips_text_files_reports_bad_ones_and_never_touches_the_sources", "crates/engine/src/ocr_folder/run_tests.rs::a_folder_is_made_searchable_next_to_the_sources_and_one_bad_file_does_not_stop_it"]
+notes = "Scan & OCR > OCR a folder. Optionally recursive; results next to the source with a suffix (_ocr) or in an output folder keeping the subfolder layout; a source is replaced only with an empty suffix plus overwrite; files that already have text and password-protected files are skipped with the reason, a failing file never stops the run; at most 1000 PDFs, 256 MiB per file and 4 GiB per run, refused with an error before anything is read. Runs off the UI thread with progress, Stop and a per-file summary."
 
 # ==================================================================================================
 # J. Create and export
@@ -10407,3 +10443,51 @@ commands = []
 tools = []
 evidence = []
 notes = ""
+
+[[feature]]
+id = "view.find-japanese-variants"
+title = "Find ignoring Japanese notation variants (表記ゆれ)"
+area = "B"
+tier = "P2"
+milestone = "M3"
+status = "shipped"
+commands = ["edit.find"]
+tools = ["text_find"]
+evidence = ["crates/render/tests/it/search.rs::ignoring_japanese_variants_matches_kana_width_and_old_kanji", "crates/render/tests/it/search.rs::a_half_width_voiced_mark_in_its_own_glyph_joins_its_kana", "crates/automation/tests/it/japanese_text.rs::text_find_ignores_japanese_variants_when_asked"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. Find options (find bar and Search panel) and text_find ignore_variants treat full-width and half-width forms, hiragana and katakana (including half-width voiced marks) and a hand-written table of common old and new kanji as equal; on by default when the interface is Japanese. Highlights cover the glyphs as written."
+
+[[feature]]
+id = "protect.redact-japanese-pii"
+title = "Find personal information (Japan) and mark it for redaction"
+area = "G"
+tier = "P2"
+milestone = "M8"
+status = "shipped"
+commands = ["redact.mark"]
+tools = ["redact_find_pii"]
+evidence = ["crates/engine/src/pii_ja.rs::my_number_forms", "crates/engine/src/pii_ja.rs::phone_numbers", "crates/engine/src/pii_ja.rs::dates_and_other_numbers_are_not_phone_numbers", "crates/automation/tests/it/japanese_text.rs::redact_find_pii_marks_and_applies"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. My Number (check digit validated), Japanese phone numbers, postal codes, email addresses and an approximate street-address heuristic, read through the Japanese notation folding (full-width digits, dash variants). Hits are marked for review; nothing is removed until Apply Redactions. Find text and redact has a Find personal information option with category check boxes."
+
+[[feature]]
+id = "create.vertical-japanese"
+title = "Create a vertical Japanese document from text (縦書き文書)"
+area = "J"
+tier = "P2"
+milestone = "M10"
+status = "shipped"
+commands = ["create.vertical"]
+tools = ["create_vertical_document"]
+evidence = ["crates/edit/src/added/vertical_doc.rs::a_stop_that_would_start_a_column_hangs_below_the_previous_one", "crates/edit/src/added/vertical_doc.rs::documents_are_right_bound_and_flow_over_pages", "crates/automation/tests/it/automation.rs::vertical_japanese_documents_are_made_from_text", "crates/automation/tests/it/automation.rs::vertical_binsen_and_plain_documents_flow_and_refuse_clearly"]
+notes = "PdfCraft Japanese fork. Not an Acrobat feature (Acrobat has no manuscript-paper template); listed so the tool and command are tracked. Templates: 原稿用紙 (20 x 20 squares, two halves of 10 around the centre fold, vector grid in green or red-brown, one character per square, columns right to left, 字下げ at each paragraph, 行頭禁則 by ぶら下げ of one character or 追い出し of the column's last character when two or more can't start a column, an opening bracket never ends a column, 縦中横 for one or two half-width digits, other half-width characters one per square, ruby over the base squares, optional title and author columns), 便箋 (vertical ruled lines, configurable line count and margin) and plain vertical text. Mincho or Gothic from craft-fonts (Type 3 glyphs, text extracted through one ActualText span per column), A4/A5/B4/B5, portrait or landscape, /ViewerPreferences /Direction /R2L. UI: Create, Vertical Japanese document dialog with a preview of the first page. Refused with a clear message when the build has no Japanese face (CRAFT_FONTS_DIR). Missing: kinsoku beyond a hung character or two, vertical alignment of tall Latin words, full-width Latin mapping, page numbers or header text in the fold."
+
+[[feature]]
+id = "edit.add-text-vertical-typing"
+title = "Type vertical added text in its columns (縦書きのまま入力)"
+area = "C"
+tier = "P2"
+milestone = "M7"
+status = "shipped"
+commands = ["edit.text"]
+tools = ["page_add_text", "content_update"]
+evidence = ["crates/ui-egui/tests/it/content.rs::vertical_text_is_typed_in_its_columns", "crates/edit/src/added/vertical_edit.rs::arrows_move_along_and_across_columns", "crates/edit/src/added/vertical_edit.rs::a_click_finds_the_caret_in_its_column", "crates/edit/src/added/vertical_edit.rs::the_typed_text_wraps_where_the_committed_text_does", "crates/edit/src/added/vertical_edit.rs::no_text_and_any_index_are_safe"]
+notes = "pdfcraft-JPN. While a vertical added-text box (vertical = true) is typed or retyped in place, the editor draws it in the columns the page will draw (right to left, upright Japanese, sideways Latin words, 縦中横), with a horizontal caret bar, selection along the columns and the IME candidate window at the caret. Up/Down move to the previous/next character, Left/Right to the next/previous column, Home/End to the column's ends (Ctrl/Cmd: the text's), Shift extends; clicks, drags and double clicks place the caret by the columns. Ruby markup stays as typed while editing; punctuation's vertical forms are approximated by turning or moving the interface glyphs. Headless use needs no new tool: page_add_text and content_update already take vertical."

@@ -26,14 +26,20 @@ pub(crate) fn panel(ui: &mut egui::Ui, t: &Tokens, view: &mut DocView, pages: us
         r.request_focus();
         find.focus = false;
     }
-    ui.horizontal(|ui| {
+    ui.scope(|ui| {
         // Outlined boxes (the panel and the check-box fill are alike), as in dialogs.
         let w = &mut ui.visuals_mut().widgets;
         w.inactive.bg_stroke = egui::Stroke::new(1.0, t.border);
         w.inactive.bg_fill = t.hover;
-        let a = ui.add(widgets::checkbox(&mut find.whole_words, tl!("Whole words only"))).changed();
-        let b = ui.add(widgets::checkbox(&mut find.case_sensitive, tl!("Case-sensitive"))).changed();
-        if a || b {
+        let (a, b) = ui
+            .horizontal(|ui| {
+                let a = ui.add(widgets::checkbox(&mut find.whole_words, tl!("Whole words only"))).changed();
+                (a, ui.add(widgets::checkbox(&mut find.case_sensitive, tl!("Case-sensitive"))).changed())
+            })
+            .inner;
+        // A line of its own: the Japanese-variants label is too long to share the row.
+        let c = ui.add(widgets::checkbox(&mut find.ignore_variants, tl!("Ignore Japanese variants"))).changed();
+        if a || b || c {
             find.case_query.clear();
         }
     });

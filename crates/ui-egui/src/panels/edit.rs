@@ -187,6 +187,8 @@ pub(super) fn stamp_palette(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens
     ui.label(egui::RichText::new(tl!("Choose a stamp, then click on the page to place it.")).small().color(t.text_faint));
     egui::ScrollArea::vertical().auto_shrink([false, false]).show(ui, |ui| {
         super::tools::clear_of_scrollbar(ui);
+        // pdfcraft-JPN: the seal (印鑑) first, where Japanese users look for it.
+        ui.scope(|ui| crate::seal_ui::palette_section(app, ui, t));
         for (group, title) in [
             (StampGroup::Dynamic, tl!("Dynamic")),
             (StampGroup::SignHere, tl!("Sign Here")),

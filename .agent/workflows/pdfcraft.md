@@ -40,6 +40,14 @@ pdfcraft-cli mcp install --target antigravity --root <作業フォルダ>
 - 日本語の書き込みに対応(pdfcraft-JPN): `page_add_text`・テキストボックスのコメント・ヘッダー/フッター・透かしで日本語が使える(craft-fonts の日本語フォントを Type 3 で埋め込み、コピー・検索も可)。
 - 縦書きで書き込むときは `page_add_text` に `vertical: true` を付ける。`rect` の高さが1列の長さ、列は右から左へ並ぶ。英数字は横倒しで描かれる。後から `content_update` の `vertical` で切り替えられる。
 
+- 日本語向けの追加ツール(pdfcraft-JPN):
+  - `page_add_seal`: 電子印鑑(`kind: "name"` の認印、`kind: "date"` のデータ印。`org`・`date`(`today` か `yyyy-mm-dd`)・`era: true` で和暦)。
+  - `create_vertical_document`: 本文から縦書き文書を作る(`template`: `genko` 原稿用紙 / `binsen` 便箋 / `plain`)。
+  - `text_find` と `redact_mark` の `ignore_variants: true`: 全角/半角・ひらがな/カタカナ・旧字体の違いを無視して探す。
+  - `redact_find_pii`: マイナンバー・電話番号・郵便番号・メール(・住所)を探す。`mark: true` で墨消しの印を付けるだけで、消すのは `redact_apply`。適用の前に必ずユーザーに確認する。
+  - `export_text`: テキストを `.docx` / `.txt` に書き出す(`ocr_if_needed: true` で文字のないページを先に OCR)。
+  - `ocr_folder`: フォルダー内の PDF をまとめて OCR(元ファイルは上書きしない)。
+
 ## 5. レシピ
 
 - 結合: `doc_combine`(`paths` を順に指定、`out`)

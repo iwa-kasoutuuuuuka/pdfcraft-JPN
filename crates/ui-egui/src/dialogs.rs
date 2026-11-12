@@ -70,9 +70,11 @@ struct Pending {
     open_revision: Option<usize>,
     a11y_now: bool,
     ocr_now: bool,
+    ocr_export_now: bool,
     scan_clean_now: bool,
     compare_now: bool,
     images_now: bool,
+    vertical_now: bool,
     stamp_now: bool,
     alt_now: bool,
     close: bool,
@@ -154,6 +156,7 @@ fn dialogs(app: &mut PdfCraftApp, ctx: &egui::Context) {
             Dialog::Preferences => 610.0,
             Dialog::About => 820.0,
             Dialog::PinTool => 540.0,
+            Dialog::CreateVertical => 640.0,
             _ => 520.0,
         });
         if dialog_body(ui, app, dialog, &mut req) {
@@ -174,6 +177,12 @@ fn dialog_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, dialog: Dialog, req: &m
             let (go, cancel) = crate::create_ui::image_import_body(ui, app);
             req.images_now = go;
             req.close = go || cancel;
+            return false;
+        }
+        Dialog::CreateVertical => {
+            let (go, cancel) = crate::vertical_ui::body(ui, app);
+            req.vertical_now = go;
+            req.close = cancel;
             return false;
         }
         Dialog::Properties(tab) => {
@@ -437,6 +446,16 @@ fn dialog_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, dialog: Dialog, req: &m
             let (go, cancel) = crate::ocr_ui::body(ui, app, &t);
             req.ocr_now = go;
             req.close = go || cancel;
+            return false;
+        }
+        Dialog::ExportOcrText => {
+            let (go, cancel) = crate::ocr_export_ui::body(ui, app, &t);
+            req.ocr_export_now = go;
+            req.close = go || cancel;
+            return false;
+        }
+        Dialog::OcrFolder => {
+            req.close = crate::ocr_folder_ui::body(ui, app, &t);
             return false;
         }
         Dialog::EnhanceScan => {
@@ -2233,6 +2252,12 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
     if req.stamp_now {
         app.save_custom_stamp();
     }
+    if req.vertical_now && app.finish_vertical_document() {
+        req.close = true;
+    }
+    if dialog == Dialog::CreateVertical && (req.close || modal_closed) {
+        app.vertical_doc = None;
+    }
     if req.images_now {
         app.finish_image_import();
     } else if dialog == Dialog::CreateImages && app.dialog != Some(Dialog::CreateImages) {
@@ -2243,6 +2268,9 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
     }
     if req.scan_clean_now {
         app.start_scan_clean();
+    }
+    if req.ocr_export_now {
+        app.start_ocr_export();
     }
     if req.compare_now {
         app.run_compare();

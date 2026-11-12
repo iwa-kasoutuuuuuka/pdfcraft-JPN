@@ -30,12 +30,15 @@ pub mod mcp;
 mod measure;
 mod model3d;
 mod model_render;
+mod ocr_export;
 mod printing;
 mod reading;
 mod redact;
+mod seal;
 mod signing;
 mod text_cache;
 mod tools;
+mod vertical_doc;
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};

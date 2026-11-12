@@ -185,6 +185,7 @@ use tools::measure_ui;
 use tools::object_ui;
 pub use tools::prepare;
 use tools::redact_ui;
+use tools::seal_ui;
 use tools::sign_ui;
 use tools::stamps_ui;
 use tools::tags_ui;
@@ -199,6 +200,8 @@ use workflows::create_ui;
 use workflows::export_ui;
 use workflows::files;
 use workflows::js_ui;
+use workflows::ocr_export_ui;
+use workflows::ocr_folder_ui;
 #[cfg(target_arch = "wasm32")]
 use workflows::ocr_route;
 use workflows::ocr_ui;
@@ -208,6 +211,7 @@ use workflows::ocr_web;
 use workflows::optimize_ui;
 use workflows::print_ui;
 use workflows::scan_clean_ui;
+use workflows::vertical_ui;
 use workflows::web_print;
 
 /// Files dropped on a document's page grid or its Pages panel.
@@ -598,6 +602,10 @@ pub struct PdfCraftApp {
     /// Scan & OCR: the Recognize Text choices, the running job, and (tests) run it inline.
     pub ocr_draft: ocr_ui::OcrDraft,
     pub ocr_run: Option<ocr_ui::OcrRun>,
+    /// Scan & OCR: Export recognized text: the dialog's choices.
+    pub ocr_export_draft: ocr_export_ui::OcrExportDraft,
+    /// Scan & OCR: OCR a folder: the dialog's choices, the running job and the last summary.
+    pub ocr_folder: ocr_folder_ui::OcrFolderState,
     pub ocr_batch: Option<std::sync::Arc<std::sync::Mutex<ocr_ui::BatchProgress>>>,
     /// The web build's files being read in Web Workers (progress in `ocr_batch`).
     #[cfg(target_arch = "wasm32")]
@@ -668,9 +676,14 @@ pub struct PdfCraftApp {
     pub(crate) combine_thumbs: combine_grid::Thumbs,
     /// Images waiting for the resolution choice (released on cancel).
     pub image_import: Option<create_ui::ImageImport>,
+    /// The Create ▸ Vertical Japanese document form, while its dialog is open.
+    pub vertical_doc: Option<vertical_ui::VerticalDraft>,
     /// The custom stamp library, and the stamp being created.
     pub custom_stamps: Vec<stamps_ui::CustomStamp>,
     pub stamp_draft: stamps_ui::StampDraft,
+    /// The electronic seal being made in the stamps palette, and its preview.
+    pub seal_draft: seal_ui::SealDraft,
+    pub(crate) seal_preview: seal_ui::SealPreview,
     /// PDF Optimizer choices.
     pub optimize_draft: OptimizeDraft,
     /// The running optimization (Optimize PDF ▸ Advanced optimization).

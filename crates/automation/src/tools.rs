@@ -275,6 +275,7 @@ pub fn tools() -> Vec<ToolDef> {
             .with(schema(json!({ "doc": doc(), "query": { "type": "string", "minLength": 1 }, "limit": { "type": "integer", "minimum": 1, "description": "Maximum matches (default 500). When another match exists, next holds start_page and skip to continue. complete is false for either additional matches or failed pages; an exhausted search with warnings has no next." },
                 "start_page": { "type": "integer", "minimum": 1, "description": "Page to start searching from (default 1)." },
                 "skip": { "type": "integer", "minimum": 0, "description": "Matches to pass over on start_page before returning any (default 0)." },
+                "ignore_variants": { "type": "boolean", "description": "Ignore Japanese notation variants (default false): full-width and half-width forms (ＡＢＣ and ABC, １２３ and 123, ｶﾀｶﾅ and カタカナ), hiragana and katakana (がっこう and ガッコウ), and old and new kanji forms (國 and 国). Highlights still cover the glyphs as written." },
                 "stop_at_limit": { "type": "boolean", "description": "Stop at the limit-th match without looking for another (default false). The answer then has stopped_at_limit; when true, complete is false and next is only where to resume, so following it may find nothing more." } }), &["doc", "query"])),
         t("page_rotate", "Rotate pages", "Rotate pages by a multiple of 90 degrees (positive is clockwise): the listed pages (default all), filtered like Acrobat's Rotate Pages by subset (all, even, odd page numbers) and orientation (all, landscape, portrait). Undoable.")
             .cmd("page.rotate")
@@ -605,6 +606,24 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["doc", "page", "path"],
             )),
+        t("page_add_seal", "Add an electronic seal (電子印鑑)", "Stamp a Japanese seal (ハンコ) on a page as a vector Stamp comment, so it can be moved, resized and deleted like any stamp (comment_edit, comment_delete). at [x, y] is its centre in points from the top-left of the displayed page; size is its side in points (20-200, default 48, about 17 mm). kind \"name\" (default, 認印/名前印): a red ring (shape \"circle\", default, or \"square\" for a 角印) with name set vertically inside, 1-6 characters (a name of 4-6 characters is set in two columns; an all-ASCII name is set on one line, up to 12 characters), sized to fit inside the outline. kind \"date\" (データ印): a ring cut by two rules into three bands, org (a department or organisation, optional, up to 12 characters) on top, the date in the middle and name below. date is \"today\" (default) or yyyy-mm-dd; era true writes it with the Japanese era (令和8.11.11) instead of Western (2026.11.11). color is #RRGGBB or a name (default vermilion #D91F1A). Japanese text is drawn in the Gothic face from craft-fonts; a build without a Japanese face refuses Japanese text with an error saying so (an ASCII name still works). Undoable.")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "page": { "type": "integer", "minimum": 1 },
+                    "at": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                    "size": { "type": "number", "minimum": 20, "maximum": 200 },
+                    "kind": { "type": "string", "enum": ["name", "date"] },
+                    "name": { "type": "string", "minLength": 1, "maxLength": 12 },
+                    "org": { "type": "string", "maxLength": 12 },
+                    "date": { "type": "string", "description": "\"today\" or yyyy-mm-dd" },
+                    "era": { "type": "boolean" },
+                    "shape": { "type": "string", "enum": ["circle", "square"] },
+                    "color": { "type": "string" },
+                    "author": { "type": "string" },
+                }),
+                &["doc", "page", "at", "name"],
+            )),
         t("model_add", "Add a 3D model", "Add a 3D model (Acrobat: Rich Media ▸ Add 3D): the U3D or PRC file at path, recognised by its first bytes, as a 3D annotation in rect [x0, y0, x1, y1] (points from the top-left of the displayed page; each side 1–14400 pt; at most 256 MiB). Its poster, what prints and what readers show until the model is activated, is the picture at poster (a PDF page, poster_page default 1, or an image) fitted inside rect keeping its shape and centred; without poster, a frame labelled \"3D model\". activation: click (default), page_open or page_visible. name is its description (default: the file name). No views are added: readers open the model on its own default view. Undoable.")
             .with(schema(
                 json!({
@@ -689,6 +708,7 @@ pub fn tools() -> Vec<ToolDef> {
                 "words": { "type": "array", "items": { "type": "string", "minLength": 1 }, "minItems": 1, "maxItems": 1000 },
                 "case_sensitive": { "type": "boolean", "description": "Match letter case for find or words (default false)." },
                 "whole_words": { "type": "boolean", "description": "Match whole words for find or words (default false)." },
+                "ignore_variants": { "type": "boolean", "description": "Ignore Japanese notation variants for find or words (default false): full-width/half-width forms, hiragana/katakana and old/new kanji count as equal." },
                 "pattern": pattern_enum(),
                 "regex": { "type": "string", "minLength": 1, "maxLength": 1024, "description": "Regular expression (Rust regex syntax), at most 1024 bytes (maxLength counts characters, the limit is bytes); every match is marked." },
                 "validate": { "type": "string", "enum": ["luhn", "mod97", "iban"], "description": "With regex: keep a match only if its checksum is valid (spaces and hyphens ignored)." },
@@ -698,6 +718,23 @@ pub fn tools() -> Vec<ToolDef> {
                 "code_set": { "type": "string", "enum": ["foia", "privacy-act"] },
                 "codes": { "type": "array", "items": { "type": "string" }, "minItems": 1, "description": "Redaction codes from code_set, e.g. [\"(b)(6)\"]." },
                 "fill": { "type": "string", "description": "#RRGGBB or a colour name." },
+                "author": { "type": "string" },
+            }),
+            &["doc"],
+        )),
+        t(
+            "redact_find_pii",
+            "Find personal information (Japan)",
+            "Find personal information as written in Japan and optionally mark it for redaction (nothing is removed until redact_apply; review the marks first). Categories: my-number (マイナンバー: twelve digits, grouped 4-4-4 or not, whose check digit is valid), phone (電話番号: landline, 070/080/090/050 mobile, 0120/0570/0800, with hyphens, spaces, brackets or none), postal-code (郵便番号: 〒123-4567, 123-4567), email, address (住所: a prefecture, a municipality ending in 市区町村郡 and a street number; a heuristic, off unless listed). Default categories: my-number, phone, postal-code, email. Full-width digits and letters and dash variants are read as ASCII; dates such as 2024-11-11 are not phone numbers. Returns hits with category, text, page and line rectangles in points (origin top-left), and by_category counts. With mark: true each hit is marked (undoable) and marked and marks_pending are returned. Text in images is not found; recognise it (OCR) first.",
+        )
+        .with(schema(
+            json!({
+                "doc": doc(),
+                "categories": { "type": "array", "items": { "type": "string", "enum": ["my-number", "phone", "postal-code", "email", "address"] }, "minItems": 1, "description": "Categories to look for (default: my-number, phone, postal-code, email)." },
+                "pages": pages("to search (default: all)"),
+                "mark": { "type": "boolean", "description": "Mark every hit for redaction (default false: only report)." },
+                "overlay": { "type": "string", "description": "With mark: text shown on the box once applied." },
+                "fill": { "type": "string", "description": "With mark: #RRGGBB or a colour name (default black)." },
                 "author": { "type": "string" },
             }),
             &["doc"],
@@ -1547,6 +1584,54 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["paths", "folder"],
             )),
+        t("export_text", "Export text (txt / Word)", "Scan & OCR ▸ Export recognized text: write the text of pages as a UTF-8 plain text file (.txt; pages told apart by a `===== 3 / 12 =====` line, or form feeds with separator formfeed) or a Word document (.docx). The text is in reading order, Japanese vertical columns (縦書き) right to left, and grouped into paragraphs (lines of one block joined; a wider gap, another column or a change of writing direction starts the next). The Word file tags its text as Japanese (language ja-JP, East Asian font slot) and, with vertical auto (default: a page whose text is mostly vertical) or on, writes vertical pages as top-to-bottom sections; vertical off never does. ocr_if_needed first reads the selected pages that have no text layer (language ja and engine auto unless you say otherwise; the open document is not changed); without it such pages come back empty and are listed in empty_pages. The format comes from the path's extension unless format says. Returns path, pages, paragraphs, bytes, ocr_pages, vertical_pages, empty_pages and warnings. The document must allow copying.")
+            .cmd("ocr.export_text")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "path": { "type": "string", "description": "File to write (.txt or .docx); written atomically." },
+                    "format": { "type": "string", "enum": ["txt", "docx"], "description": "Default: from path's extension." },
+                    "pages": pages("to export (default: all)"),
+                    "ocr_if_needed": { "type": "boolean", "description": "Read pages without a text layer first (default false)." },
+                    "vertical": { "type": "string", "enum": ["auto", "on", "off"], "description": "Word: vertical text sections (default auto)." },
+                    "separator": { "type": "string", "enum": ["line", "formfeed"], "description": "Text: how pages are told apart (default line)." },
+                    "title": { "type": "string", "description": "Word: the document title (default: the document name)." },
+                    "document_language": { "type": "string", "description": "Word: BCP 47 language tag (default: from language, ja-JP)." },
+                    "language": { "type": "string", "enum": language_enum(), "description": "OCR language when ocr_if_needed (default ja)." },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"], "description": "OCR engine when ocr_if_needed (default auto)." },
+                    "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },
+                    "dpi": { "type": "number", "minimum": 72, "maximum": 600 },
+                    "auto_rotate": { "type": "boolean" },
+                    "deskew": { "type": "boolean" },
+                    "denoise": { "type": "boolean" },
+                    "binarize": { "type": "boolean" },
+                }),
+                &["doc", "path"],
+            )),
+        t("ocr_folder", "OCR a folder", "Scan & OCR ▸ OCR a folder: make every PDF in folder searchable (an invisible text layer over the page images), one file at a time, language ja and engine auto unless you say otherwise. recursive also takes subfolders (links are never followed). Results go next to each source as <name>_ocr.pdf (suffix changes the _ocr; an empty suffix needs overwrite), or into output_dir under the same names and subfolders. A source is never replaced unless overwrite is true; without it a result that already exists is left alone and the file reported as skipped. Files that already have a text layer are skipped unless skip_with_text is false; password-protected files are skipped with the reason; a file that fails does not stop the run. Returns ok / skipped / failed / words counts and per file: status (ok, skipped, failed), output or reason. A run takes at most 1000 PDFs, 256 MiB per file and 4 GiB in all (larger folders are refused with an error before anything is read). Paths honour root. Needs the engines only for files that must be read (ocr_status).")
+            .cmd("ocr.folder")
+            .with(schema(
+                json!({
+                    "folder": { "type": "string" },
+                    "recursive": { "type": "boolean", "description": "Also take the PDFs of subfolders (default false)." },
+                    "output_dir": { "type": "string", "description": "Write the results here, keeping the subfolder layout (default: beside each source)." },
+                    "suffix": { "type": "string", "description": "Added before .pdf (default _ocr beside the source, nothing with output_dir)." },
+                    "skip_with_text": { "type": "boolean", "description": "Leave files that already have a text layer alone (default true)." },
+                    "overwrite": { "type": "boolean", "description": "Replace results that exist, and allow results that would replace the source (default false)." },
+                    "max_files": { "type": "integer", "minimum": 1, "maximum": 1000, "description": "Refuse a folder with more PDFs than this (default and most: 1000)." },
+                    "dpi": { "type": "number", "minimum": 72, "maximum": 600 },
+                    "language": { "type": "string", "enum": language_enum(), "description": "Document language (default ja)." },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"], "description": "Default auto." },
+                    "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },
+                    "skip_text_pages": { "type": "boolean", "description": "Leave pages that already have text alone (default true)." },
+                    "force_ocr": { "type": "boolean", "description": "Read even where the skip options would leave things alone (default false)." },
+                    "auto_rotate": { "type": "boolean" },
+                    "deskew": { "type": "boolean" },
+                    "denoise": { "type": "boolean" },
+                    "binarize": { "type": "boolean" },
+                }),
+                &["folder"],
+            )),
         t("ocr_status", "OCR status", "Whether text recognition is available, where it looks for models (release packages include them; a source build fetches them with `cargo xtask models`; PDFCRAFT_MODELS overrides), its languages, and the engines: ocrs (built in, models), tesseract (an installed program, with its path) and windows (the Windows built-in OCR, on Windows). The japanese entry says whether tesseract's jpn and jpn_vert language data are installed (language ja reads horizontal and, with jpn_vert, vertical text; ja-vert reads vertical-only pages) and where to get them.")
             .ro()
             .cmd("ocr.recognize")
@@ -1612,6 +1697,32 @@ pub fn tools() -> Vec<ToolDef> {
                 "name": { "type": "string", "description": "Name for the new document (default derived from the source)." },
             }),
             &["from"],
+        )),
+        t(
+            "create_vertical_document",
+            "Create a vertical Japanese document",
+            "Create a new, unsaved vertical Japanese document (縦書き文書) from plain text and return it like doc_open (plus columns, hung and page_size). `text` (UTF-8) or `text_file` (a .txt path); Aozora-style ruby (｜親《るび》, 漢字《かんじ》) is drawn beside the base. template: genko (default; 原稿用紙, 20 x 20 squares a page by default in two halves of 10 columns around the centre fold, one character per square, columns right to left, each paragraph starting a new column with one square indented (字下げ); a 、。」） or small kana that would start a column is hung below the previous column (ぶら下げ), an opening bracket never ends a column; one or two half-width digits (or !!, !?, ?!) share a square (縦中横), any other half-width character takes a square of its own; optional title in the first column (indented three squares) and author in the second (bottom aligned), then one blank column; landscape A4 by default), binsen (便箋: vertical ruled lines, `columns` lines per page, text flowing in them) or plain (vertical text with margins, no lines). page_size a4 (default), a5, b4 or b5; orientation portrait or landscape (default landscape for genko, portrait otherwise); font mincho (default) or gothic; font_size in points (genko: at most the square, default 80 percent of it); columns (genko: squares across the page, default 20; binsen and plain: lines per page) and rows (genko only: squares per column, default 20); grid_colour green (default), red (red-brown) or #RRGGBB; margin in points (binsen and plain). The document is right-bound (/ViewerPreferences /Direction /R2L) and every column is one text span, so text extraction reads it in order. Fails with a message saying what to change when no Japanese font is embedded in the build, the text has a character the font lacks, or the options don't fit the page. `output` also writes the PDF to that path (an existing file is kept unless overwrite is true).",
+        )
+        .with(schema(
+            json!({
+                "text": { "type": "string" },
+                "text_file": { "type": "string", "description": "Path of a .txt file (UTF-8, or detected like doc_create)." },
+                "template": { "type": "string", "enum": ["genko", "binsen", "plain"] },
+                "page_size": { "type": "string", "enum": ["a4", "a5", "b4", "b5"] },
+                "orientation": { "type": "string", "enum": ["portrait", "landscape"] },
+                "font": { "type": "string", "enum": ["mincho", "gothic"] },
+                "font_size": { "type": "number", "minimum": 3, "maximum": 72 },
+                "columns": { "type": "integer", "minimum": 1, "maximum": 120 },
+                "rows": { "type": "integer", "minimum": 1, "maximum": 60 },
+                "grid_colour": { "type": "string", "description": "green, red or #RRGGBB." },
+                "margin": { "type": "number", "minimum": 0 },
+                "title": { "type": "string" },
+                "author": { "type": "string" },
+                "output": { "type": "string", "description": "Also write the PDF here." },
+                "overwrite": { "type": "boolean" },
+                "name": { "type": "string", "description": "Name for the new document (default from the title or file)." },
+            }),
+            &[],
         )),
         t("doc_reduce", "Reduce file size", "Write a smaller copy of the document to `path` with Acrobat's Reduce File Size choices: colour and grey images above 225 ppi downsampled to 150 ppi and JPEG-compressed (medium quality), black-and-white images averaged down to 300 ppi above 450 ppi and each stored as CCITT Group 4 (or 1-bit Flate, once resampled or packed from more bits) whenever that is smaller, thumbnails dropped, identical fonts and images merged, unused objects dropped, compressed object streams. If the copy wouldn't be smaller, nothing is written and `written` is false. Images past what one run may decode stay as they are, counted in images_refused; streams it only stores with Flate past that stay LZW, uncounted. The open document is unchanged.")
             .cmd("optimize.reduce")

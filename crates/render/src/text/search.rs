@@ -38,12 +38,41 @@ fn breaks_before(page: &PageText, i: usize) -> bool {
 }
 
 pub(super) fn find(page: &PageText, query: &str, sensitive: bool, whole_words: bool, limit: usize) -> Vec<Range<usize>> {
+    find_variants(page, query, sensitive, whole_words, false, limit)
+}
+
+/// Each page character with the first and last glyph that own it. A character folded from two
+/// (a kana and its half-width voiced mark, in glyphs of their own) is owned by both.
+type Chars = Vec<(char, usize, usize)>;
+
+/// `chars` folded for Japanese notation variants (see [`super::japanese`]), with the parallel
+/// `zero_width_space` flags carried along (a folded character takes its first character's).
+fn fold_variants(chars: Chars, zero_width_space: Vec<bool>) -> (Chars, Vec<bool>) {
+    let plain: Vec<char> = chars.iter().map(|c| c.0).collect();
+    let folded = super::japanese::fold_chars(&plain);
+    let mut out: Chars = Vec::with_capacity(folded.chars.len());
+    let mut flags = Vec::with_capacity(folded.chars.len());
+    for (c, origin) in folded.chars.into_iter().zip(folded.origin) {
+        let first = chars.get(origin.start).map(|x| x.1);
+        let last = origin.end.checked_sub(1).and_then(|k| chars.get(k)).map(|x| x.2);
+        if let Some((first, last)) = first.zip(last) {
+            out.push((c, first, last));
+            flags.push(zero_width_space.get(origin.start).copied().unwrap_or(false));
+        }
+    }
+    (out, flags)
+}
+
+pub(super) fn find_variants(page: &PageText, query: &str, sensitive: bool, whole_words: bool, variants: bool, limit: usize) -> Vec<Range<usize>> {
     if limit == 0 {
         return Vec::new();
     }
     let fold = |s: &str| if sensitive { ligature_letters(s.to_owned()) } else { fold_case(&ligature_letters(s.to_owned())) };
     let query: String = fold(query).chars().filter(|&c| !is_invisible(c)).collect();
-    let needle: Vec<char> = query.split_whitespace().collect::<Vec<_>>().join(" ").chars().collect();
+    let mut needle: Vec<char> = query.split_whitespace().collect::<Vec<_>>().join(" ").chars().collect();
+    if variants {
+        needle = super::japanese::fold_chars(&needle).chars;
+    }
     if needle.is_empty() {
         return Vec::new();
     }
@@ -62,7 +91,10 @@ pub(super) fn find(page: &PageText, query: &str, sensitive: bool, whole_words: b
     }
     let mut hits: Vec<(Range<usize>, usize)> = Vec::new();
     for (r, &reading) in readings.iter().enumerate() {
-        let (chars, zero_width_space) = characters(page, &texts, &divided, reading);
+        let (mut chars, mut zero_width_space) = characters(page, &texts, &divided, reading);
+        if variants {
+            (chars, zero_width_space) = fold_variants(chars, zero_width_space);
+        }
         let found = search(&chars, &zero_width_space, &needle, &prefix, whole_words, limit);
         hits.extend(found.into_iter().map(|hit| (hit, r)));
     }
@@ -119,8 +151,8 @@ fn divides(page: &PageText, texts: &[String], i: usize) -> bool {
 /// skipped ZERO WIDTH SPACE came right before each one: it draws nothing, but it is a word
 /// boundary (UAX #29 breaks on both sides of it), which Thai and Khmer write between words with
 /// no visible gap, so whole-word search still sees two words there.
-fn characters(page: &PageText, texts: &[String], divided: &[bool], reading: Hyphen) -> (Vec<(char, usize)>, Vec<bool>) {
-    let mut chars: Vec<(char, usize)> = Vec::new();
+fn characters(page: &PageText, texts: &[String], divided: &[bool], reading: Hyphen) -> (Chars, Vec<bool>) {
+    let mut chars: Chars = Vec::new();
     let mut zero_width_space: Vec<bool> = Vec::new();
     let mut pending_zero_width_space = false;
     // The last character pushed other than a variation selector, kept as characters are pushed so
@@ -140,7 +172,7 @@ fn characters(page: &PageText, texts: &[String], divided: &[bool], reading: Hyph
         let after_divide = reading != Hyphen::Written && i.checked_sub(1).and_then(|p| divided.get(p)).copied().unwrap_or(false);
         let gap = page.space_before.get(i).copied().unwrap_or(false) || (line_break && !(joined || soft_break || after_divide));
         if i > 0 && gap && chars.last().is_some_and(|c| c.0 != ' ') {
-            chars.push((' ', i));
+            chars.push((' ', i, i));
             last_base = Some(' ');
             zero_width_space.push(false);
             pending_zero_width_space = false;
@@ -161,7 +193,7 @@ fn characters(page: &PageText, texts: &[String], divided: &[bool], reading: Hyph
             }
             let c = if c.is_whitespace() { ' ' } else { c };
             if c != ' ' || chars.last().is_none_or(|last| last.0 != ' ') {
-                chars.push((c, i));
+                chars.push((c, i, i));
                 if !is_variation_selector(c) {
                     last_base = Some(c);
                 }
@@ -176,7 +208,7 @@ fn characters(page: &PageText, texts: &[String], divided: &[bool], reading: Hyph
 /// Non-overlapping hits of `needle` (with its KMP `prefix` table) in `chars`, as glyph ranges.
 /// `zero_width_space` says which characters come right after a skipped zero width space.
 fn search(
-    chars: &[(char, usize)],
+    chars: &[(char, usize, usize)],
     zero_width_space: &[bool],
     needle: &[char],
     prefix: &[usize],
@@ -195,7 +227,7 @@ fn search(
     // A skipped zero width space before the first character or after the last is a boundary.
     let after_break = |i: usize| zero_width_space.get(i).copied().unwrap_or(false);
     let mut hits = Vec::new();
-    for (i, &(c, owner)) in chars.iter().enumerate() {
+    for (i, &(c, _, owner)) in chars.iter().enumerate() {
         matched = advance(needle, prefix, matched, c);
         if matched != needle.len() {
             continue;
@@ -204,7 +236,7 @@ fn search(
         let start = end.saturating_sub(needle.len());
         let bounded = !whole_words || ((after_break(start) || !word(start.checked_sub(1))) && (after_break(end) || !word(Some(end))));
         if bounded {
-            if let Some((_, first)) = chars.get(start)
+            if let Some((_, first, _)) = chars.get(start)
                 && let Some(last) = owner.checked_add(1)
             {
                 hits.push(*first..last);

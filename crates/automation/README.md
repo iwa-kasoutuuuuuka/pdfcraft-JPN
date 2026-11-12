@@ -354,3 +354,24 @@ updates the same one-word-per-UTF-8-line format OCR Verify uses. Omit add/remove
 The explicit path honors `--root`, including symlink confinement; choose the appropriate
 per-language file used by the UI. Entries are case-insensitive and duplicate-free. Invalid
 or oversized inputs fail before writing (65,536 words, 4 MiB, at most 1,024 bytes per word).
+
+## Exporting recognised text, and OCR of a folder
+
+`export_text {doc, path, format?, pages?, ocr_if_needed?, vertical?, separator?}` writes the text of
+pages as UTF-8 plain text (`.txt`, pages told apart by a `===== 3 / 12 =====` line, or form feeds
+with `separator: "formfeed"`) or as a Word document (`.docx`); the format comes from the extension
+unless `format` says. Lines are read in the page's reading order (vertical Japanese columns right to
+left) and joined into paragraphs. The Word file marks its text as Japanese (`w:lang w:eastAsia`,
+`w:rFonts w:eastAsia`) and writes a vertical page as a `w:textDirection tbRl` section: `vertical`
+is `auto` (a page whose text is mostly vertical), `on` or `off`. `ocr_if_needed` first reads the
+selected pages that have no text layer (language `ja` and engine `auto` unless given; the open
+document is not changed). The result lists `ocr_pages`, `vertical_pages` and `empty_pages`.
+
+`ocr_folder {folder, recursive?, output_dir?, suffix?, skip_with_text?, overwrite?}` makes every PDF
+in a folder searchable, one file at a time (same OCR defaults). Results go beside the sources as
+`<name>_ocr.pdf`, or into `output_dir` under the same names and subfolders. A source is replaced only
+with an empty `suffix` plus `overwrite`; an existing result is left alone (reported skipped) unless
+`overwrite`. Files that already have a text layer, earlier results and password-protected files are
+skipped with the reason; a corrupt file fails alone. A run takes at most 1000 PDFs, 256 MiB per file
+and 4 GiB in all, and refuses a larger folder before reading anything. Both tools honour `--root`
+and the automation read/write roots.

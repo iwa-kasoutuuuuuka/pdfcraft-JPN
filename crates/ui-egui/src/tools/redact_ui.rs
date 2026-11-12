@@ -4,7 +4,10 @@
 //! confirmation, as Acrobat asks) or clear them.
 
 use egui::{Color32, CornerRadius, Pos2, Rect, Stroke};
-use pdfcraft_engine::{Edit, NewAnnotation, REDACT_PATTERNS, REDACTION_CODE_SETS, RedactPattern, RedactionCodeSet, Rgb, Shape, Style, rect_quad};
+use pdfcraft_engine::{
+    Edit, NewAnnotation, PII_CATEGORIES, PII_DEFAULT_CATEGORIES, PiiCategory, REDACT_PATTERNS, REDACTION_CODE_SETS, RedactPattern, RedactionCodeSet,
+    Rgb, Shape, Style, rect_quad,
+};
 use pdfcraft_render::DocInfo;
 
 use crate::canvas::{DocView, PageToolContext, PageXform};
@@ -190,6 +193,8 @@ pub enum SearchMode {
     /// Every word or phrase of a list, one per line.
     Words,
     Patterns,
+    /// Personal information as written in Japan (My Number, phone, postal code, email, address).
+    PersonalInfo,
 }
 
 /// Find text and redact.
@@ -201,7 +206,11 @@ pub struct SearchDraft {
     pub words: String,
     pub case_sensitive: bool,
     pub whole_words: bool,
+    /// Treat Japanese notation variants as equal (full-width/half-width, hiragana/katakana, old/new kanji).
+    pub ignore_variants: bool,
     pub pattern: RedactPattern,
+    /// The kinds of personal information to find in `SearchMode::PersonalInfo`.
+    pub pii: Vec<PiiCategory>,
     /// The result of the last search (matches marked), shown in the dialog.
     pub found: Option<usize>,
 }
@@ -214,7 +223,9 @@ impl Default for SearchDraft {
             words: String::new(),
             case_sensitive: false,
             whole_words: false,
+            ignore_variants: false,
             pattern: RedactPattern::Phone,
+            pii: PII_DEFAULT_CATEGORIES.to_vec(),
             found: None,
         }
     }
@@ -298,9 +309,10 @@ impl PdfCraftApp {
         let needles = match d.mode {
             SearchMode::Phrase if !d.text.trim().is_empty() => vec![d.text.clone()],
             SearchMode::Words => pdfcraft_engine::redact_word_list(&d.words),
-            SearchMode::Phrase | SearchMode::Patterns => Vec::new(),
+            SearchMode::Phrase | SearchMode::Patterns | SearchMode::PersonalInfo => Vec::new(),
         };
-        if d.mode != SearchMode::Patterns && needles.is_empty() {
+        let needless = matches!(d.mode, SearchMode::Patterns | SearchMode::PersonalInfo);
+        if !needless && needles.is_empty() {
             return 0;
         }
         let config = pdfcraft_render::RenderConfig { password: doc.password.as_deref().map(std::sync::Arc::from), ..Default::default() };
@@ -312,7 +324,10 @@ impl PdfCraftApp {
             let Some(text) = out.text else { continue };
             let hits = match d.mode {
                 SearchMode::Patterns => text.find_with(|c| pdfcraft_engine::find_pattern(d.pattern, c)),
-                _ => needles.iter().flat_map(|w| text.find_opts(w, d.case_sensitive, d.whole_words)).collect(),
+                SearchMode::PersonalInfo => pdfcraft_engine::find_pii(&text, &d.pii).into_iter().map(|h| h.1).collect(),
+                _ => {
+                    needles.iter().flat_map(|w| text.find_opts_japanese(w, d.case_sensitive, d.whole_words, d.ignore_variants, usize::MAX)).collect()
+                }
             };
             for h in hits {
                 let quads: Vec<[f64; 8]> = text.line_rects(h).into_iter().map(|r| page_info.view_rect_to_quad(r)).collect();
@@ -405,9 +420,10 @@ pub(crate) fn search_body(ui: &mut egui::Ui, d: &mut SearchDraft, t: &Tokens) ->
             ui.label(egui::RichText::new(crate::i18n::fmt(tl!("{n} word(s) or phrase(s)"), &[("n", &n.to_string())])).small().color(t.text_faint));
         });
     });
-    ui.add_enabled_ui(d.mode != SearchMode::Patterns, |ui| {
+    ui.add_enabled_ui(matches!(d.mode, SearchMode::Phrase | SearchMode::Words), |ui| {
         ui.add(widgets::checkbox(&mut d.whole_words, tl!("Whole words only")));
         ui.add(widgets::checkbox(&mut d.case_sensitive, tl!("Case-sensitive")));
+        ui.add(widgets::checkbox(&mut d.ignore_variants, tl!("Ignore Japanese variants")));
     });
     ui.add_space(6.0);
     widgets::radio_value(ui, &mut d.mode, SearchMode::Patterns, tl!("Patterns"));
@@ -417,6 +433,19 @@ pub(crate) fn search_body(ui: &mut egui::Ui, d: &mut SearchDraft, t: &Tokens) ->
                 ui.selectable_value(&mut d.pattern, p, tl!(p.label()));
             }
         });
+    });
+    ui.add_space(6.0);
+    widgets::radio_value(ui, &mut d.mode, SearchMode::PersonalInfo, tl!("Find personal information"));
+    ui.add_enabled_ui(d.mode == SearchMode::PersonalInfo, |ui| {
+        for category in PII_CATEGORIES {
+            let mut on = d.pii.contains(&category);
+            if ui.add(widgets::checkbox(&mut on, tl!(category.label()))).changed() {
+                d.pii.retain(|c| *c != category);
+                if on {
+                    d.pii.push(category);
+                }
+            }
+        }
     });
     ui.add_space(6.0);
     ui.label(egui::RichText::new(tl!("Text in images isn't found; recognise text (OCR) first.")).small().color(t.text_faint));

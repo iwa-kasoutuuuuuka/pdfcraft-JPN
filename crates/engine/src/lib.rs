@@ -39,10 +39,12 @@ pub mod links;
 pub mod model3d;
 mod object_clip;
 pub mod ocr;
+pub mod ocr_folder;
 mod open;
 pub mod optimizer;
 mod page_filter;
 mod pictures;
+pub mod pii_ja;
 pub mod print_raster;
 pub mod printcheck;
 mod protection;
@@ -50,6 +52,7 @@ mod rich_copy;
 pub mod scan_clean;
 mod scan_colours;
 mod scan_fields;
+pub mod seal;
 mod session;
 pub mod signature_image;
 pub mod signature_scan;
@@ -57,6 +60,7 @@ mod sources;
 mod stamp_preview;
 #[cfg(test)]
 mod test_hooks;
+pub mod text_export;
 pub mod text_fonts;
 pub mod text_links;
 mod text_preview;
@@ -91,14 +95,16 @@ pub use pdfcraft_organize::view::{InitialView, Layout as InitialLayout, Magnific
 pub use pdfcraft_cos::{Algorithm, civil_from_days};
 pub use pdfcraft_create::{CONVERTIBLE, CreateError, ImageResolution, SourceKind, decode_text, source_kind};
 pub use pdfcraft_edit::added::{
-    CHAR_SPACING_LIMIT as ADDED_CHAR_SPACING_LIMIT, paste_place as added_paste_place, paste_rect as added_paste_rect, text_rect as added_text_rect,
-    text_width as added_text_width,
+    CHAR_SPACING_LIMIT as ADDED_CHAR_SPACING_LIMIT, CaretMove as VerticalCaretMove, VerticalEditLayout, VerticalGlyph, VerticalGlyphKind,
+    paste_place as added_paste_place, paste_rect as added_paste_rect, text_rect as added_text_rect, text_width as added_text_width,
+    word_at as vertical_word_at,
 };
 pub use pdfcraft_edit::paragraph_align;
 pub use pdfcraft_edit::{
     Added, AddedImage, AddedText, Align as TextAlign, Background, ColourTarget, ColoursConverted, Content as AddedContent, ConvertColours,
     Family as FontFamily, Hairlines, HairlinesFixed, HeaderFooter, Ink as TextInk, MarkKind, PrinterMarks, Watermark,
 };
+pub use pdfcraft_edit::{VerticalOptions, VerticalPageSize, VerticalTemplate, vertical_grid_colour};
 pub use pdfcraft_forms::{
     BorderStyle, CalculatedField, CalculationIssue, CalculationOrder, CheckStyle, Field as FormField, FieldAction, FieldChange, FieldFont,
     FieldKind as FormFieldKind, FieldProps, FieldValue, Look as FieldLook, LookPatch as FieldLookPatch, NewField, TabOrder, Trigger as FieldTrigger,
@@ -142,6 +148,7 @@ pub use pdfcraft_sign as sign;
 pub use pdfcraft_sign::{SignOptions, SignatureInfo, Status as SignatureStatus, StatusCaptions, TrustStore};
 pub use pdfcraft_xfdf::Format as DataFormat;
 pub use pdfcraft_xfdf::{Outline as CommentOutline, comment_count, comment_outlines, comments_bounds, is_xfdf_comments};
+pub use pii_ja::{PII_CATEGORIES, PII_DEFAULT_CATEGORIES, PiiCategory, find_pii, find_pii_chars, is_valid_my_number};
 
 use bookmarks::outline_rows;
 pub use bookmarks::{BookmarkPage, BookmarkRow};
@@ -162,7 +169,7 @@ pub use pictures::{MarkFile, image_dimensions};
 use pictures::{embed_image, fit_picture, mark_source, model_poster};
 use protection::unrestricted;
 pub use protection::{Changes, Printing, Protection, SecuritySummary};
-pub use session::Session;
+pub use session::{Session, VerticalSummary};
 pub use sources::{CombineSource, Combined, combine_source_check, source_page_count};
 use sources::{open_source, open_source_with};
 #[cfg(test)]

@@ -294,6 +294,17 @@ impl Exporter {
         }
     }
 
+    /// The paragraphs of a page in reading order (vertical columns right to left), for the
+    /// prose exports ([`crate::text_export`]).
+    pub fn paragraphs(&mut self, page: usize) -> Result<Vec<pdfcraft_render::TextParagraph>, String> {
+        self.check(page)?;
+        let r = self.renderer.render(RenderRequest { page, kind: RequestKind::Text, scale: 1.0, ..Default::default() });
+        match r.text {
+            Some(t) => Ok(t.paragraphs()),
+            None => Err(format!("page {}: {}", page + 1, r.error.unwrap_or_else(|| "no text layer".into()))),
+        }
+    }
+
     /// The text of several pages, separated by form feeds (as `pdftotext` does).
     pub fn text_of(&mut self, pages: &[usize]) -> Result<String, String> {
         let mut out = String::new();

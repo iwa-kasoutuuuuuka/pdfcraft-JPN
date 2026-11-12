@@ -296,6 +296,7 @@ impl Automation {
         };
         let skip = usize::try_from(a.opt_int("skip")?.unwrap_or(0).max(0)).unwrap_or(usize::MAX);
         let stop_at_limit = a.opt_bool("stop_at_limit")?.unwrap_or(false);
+        let ignore_variants = a.opt_bool("ignore_variants")?.unwrap_or(false);
         let mut matches = Vec::new();
         let mut next = None;
         let mut stopped = false;
@@ -326,7 +327,7 @@ impl Automation {
                 // One extra match proves that the caller needs a continuation. Include skipped
                 // matches on the starting page when bounding the temporary per-page result.
                 let needed = limit.saturating_sub(matches.len()).saturating_add(skip_here).saturating_add(usize::from(!stop_at_limit));
-                for (k, r) in text.find_opts_limited(query, false, false, needed).into_iter().enumerate().skip(skip_here) {
+                for (k, r) in text.find_opts_japanese(query, false, false, ignore_variants, needed).into_iter().enumerate().skip(skip_here) {
                     if matches.len() == limit {
                         next = Some(json!({ "start_page": p + 1, "skip": k }));
                         break 'search;

@@ -31,6 +31,10 @@ pub struct CustomStamp {
     /// `{date}` and `{time}` become the author and now.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub line: Option<String>,
+    /// An electronic seal (印鑑) drawn when it is placed, so a date seal takes that day's date.
+    /// `data` is the seal as it was made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seal: Option<crate::seal_ui::SealDraft>,
 }
 
 /// The line a new dynamic custom stamp offers: what the built-in dynamic stamps write.
@@ -256,6 +260,7 @@ impl PdfCraftApp {
             page: 0,
             data: d.data,
             line,
+            seal: None,
         });
         self.quick_tool = QuickTool::CustomStamp(self.custom_stamps.len() - 1);
     }

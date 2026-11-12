@@ -129,7 +129,7 @@ const FILE: &[&str] = &[
     SEP,
     "print.dialog",
 ];
-const CREATE: &[&str] = &["create.file", "create.multiple", "create.multiple_separate", "create.images", "create.clipboard"];
+const CREATE: &[&str] = &["create.file", "create.multiple", "create.multiple_separate", "create.images", "create.clipboard", "create.vertical"];
 const EXPORT: &[&str] = &["export.docx", "export.pptx", "export.rtf", "export.html", "export.text", SEP, "export.image", "export.all_images"];
 const PROTECT: &[&str] = &["protect.password", "protect.remove", "protect.unlock", SEP, "protect.properties"];
 const EDIT: &[&str] = &[
@@ -170,7 +170,7 @@ const DISPLAY: &[&str] = &[
     "view.fit_width_scrolling",
     "view.fit_one_page",
 ];
-const THEMES: &[&str] = &["view.theme.system", "view.theme.light", "view.theme.dark"];
+const THEMES: &[&str] = &["view.theme", "view.theme.system", "view.theme.light", "view.theme.dark"];
 const PANES: &[&str] = &["view.side_panel", "view.tools_pane", "view.split"];
 const PANE_COMMANDS: &[&str] = &["comment.list", "form.fields", "ui.dock.reset"];
 const MODES: &[&str] = &["view.full_screen", "view.read_mode", crate::viewer_prefs::TOGGLE];

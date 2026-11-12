@@ -72,7 +72,7 @@ config works across the suite) keep the agent to the folders you give it:
 - Every file a tool reads must lie inside the **read root**: `doc_open`, `page_insert_file`,
   `page_replace`, `doc_combine` and `doc_create_multiple` inputs, `doc_create` images, stamp,
   picture, attachment, signature and form-image files, `doc_watermark` and `doc_background` files,
-  `doc_import_data`, `form_merge_data`, the files `action_run` and `ocr_recognize_files` process,
+  `doc_import_data`, `form_merge_data`, the files `action_run` and `ocr_recognize_files` process, the folder `ocr_folder` reads,
   digital ID, graphic and certificate files for signing and `sign_trust`, `text_font_import`, and
   the folders `text_font_files` searches. Without `directories`, `text_font_files` searches the read
   root instead of the installed fonts.
@@ -80,7 +80,8 @@ config works across the suite) keep the agent to the folders you give it:
   `page_extract`, `doc_combine`, `doc_create_multiple`, `doc_split`, `doc_reduce`, `doc_optimize`,
   `doc_print` to a file, the `doc_export_*` tools, `image_save`, `measure_export`,
   `comments_summarize`, the accessibility report and review record, `doc_compare_report`,
-  `form_merge_data`, the output folders of `action_run` and `ocr_recognize_files`, `sign_id_create`
+  `form_merge_data`, the output folders of `action_run` and `ocr_recognize_files`, `export_text`, the folder
+  `ocr_folder` writes into (beside its sources, or its `output_dir`), `sign_id_create`
   and `sign_document`.
 - Read and write access are separate. Give the same folder twice for both. A root left out grants
   none of its access: with only `--automation-read-root`, nothing can be written to disk, though

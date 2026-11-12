@@ -54,6 +54,7 @@ mod marks;
 mod min_window;
 mod object_selection;
 mod ocr;
+mod ocr_text_folder;
 mod open_action;
 mod organize_drag;
 mod pageboxes;
