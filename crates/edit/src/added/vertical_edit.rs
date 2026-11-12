@@ -543,7 +543,9 @@ mod tests {
         assert_eq!(s[1].1, 0.0, "the second column from its top");
         assert!((s[1].2 - l.caret(6).1).abs() < 1e-9, "to the end of き");
         assert!(l.selection(3..3).is_empty());
-        assert!(l.selection(9..2).is_empty());
+        #[allow(clippy::reversed_empty_ranges, reason = "a reversed range from a caller must be safe")]
+        let reversed = 9..2;
+        assert!(l.selection(reversed).is_empty());
     }
 
     #[test]
