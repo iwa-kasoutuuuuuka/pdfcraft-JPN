@@ -267,7 +267,7 @@ pub const COMMANDS: &[CommandSpec] = &[
         "panel-left",
     ),
     c("ui.dock.reset", "Reset side panels", VIEW, None, Nothing, "settings"),
-    c("view.theme", "Switch light / dark theme", None, None, Nothing, "moon"),
+    c("view.theme", "Switch light / dark theme", VIEW, Some(Shortcut::cmd_shift("D")), Nothing, "moon"),
     c("view.theme.system", "Use system setting", None, None, Nothing, "settings"),
     c("view.theme.light", "Light gray", None, None, Nothing, "sun"),
     c("view.theme.dark", "Dark gray", None, None, Nothing, "moon"),

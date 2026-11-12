@@ -284,3 +284,16 @@ fn preferences_theme_cards_and_use_system_setting_stay_in_sync() {
     assert_theme(&h, ThemePreference::Dark, ThemeKind::Dark);
     assert_eq!(mode_shown(&h), "Dark");
 }
+
+#[test]
+fn ctrl_shift_d_switches_between_light_and_dark() {
+    let mut h = harness();
+    h.state_mut().run_command("view.theme.light");
+    h.run_steps(2);
+    h.key_press_modifiers(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::D);
+    h.run_steps(2);
+    assert_theme(&h, ThemePreference::Dark, ThemeKind::Dark);
+    h.key_press_modifiers(egui::Modifiers::COMMAND | egui::Modifiers::SHIFT, egui::Key::D);
+    h.run_steps(2);
+    assert_theme(&h, ThemePreference::Light, ThemeKind::Light);
+}
