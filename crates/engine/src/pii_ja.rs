@@ -429,7 +429,9 @@ pub fn find_pii_chars(categories: &[PiiCategory], chars: &[char]) -> Vec<(PiiCat
     kept
 }
 
-/// Hits of the chosen categories on one page, as glyph ranges in page order.
+/// Hits of the chosen categories on one page, as glyph ranges in page order. A glyph that carries
+/// a whole run of text (an `/ActualText` span, such as a column of vertical added text) can hold
+/// several hits: each is kept, on that same glyph, so every one is counted.
 pub fn find_pii(text: &PageText, categories: &[PiiCategory]) -> Vec<(PiiCategory, Range<usize>)> {
     let mut hits: Vec<(PiiCategory, Range<usize>)> = Vec::new();
     for &category in categories {
@@ -440,7 +442,8 @@ pub fn find_pii(text: &PageText, categories: &[PiiCategory]) -> Vec<(PiiCategory
     hits.sort_by(|a, b| a.1.start.cmp(&b.1.start).then(a.0.cmp(&b.0)));
     let mut kept: Vec<(PiiCategory, Range<usize>)> = Vec::new();
     for hit in hits {
-        if kept.last().is_none_or(|k| k.1.end <= hit.1.start) {
+        let one_glyph = |k: &(PiiCategory, Range<usize>)| k.1 == hit.1 && hit.1.len() == 1;
+        if kept.last().is_none_or(|k| k.1.end <= hit.1.start || one_glyph(k)) {
             kept.push(hit);
         }
     }

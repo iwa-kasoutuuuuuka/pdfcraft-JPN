@@ -91,6 +91,51 @@ fn a_one_character_column_reads_in_its_place() {
     assert_eq!(text.replace('\n', ""), vertical.text, "{text}");
 }
 
+/// pdfcraft-JPN: two digits set side by side in one square (縦中横) keep their column one, so
+/// the column reads in place, digits included.
+#[test]
+fn two_digit_tate_chu_yoko_keeps_its_column_in_order() {
+    if pdfcraft_fonts::document_japanese_font_for_style(false, false).is_none() {
+        eprintln!("skipping: built without a craft-fonts Jpan face");
+        return;
+    }
+    let mut doc = fixture();
+    let vertical = AddedText {
+        vertical: true,
+        rect: [300.0, 400.0, 500.0, 600.0],
+        text: "今日は11月12日です。明日は晴れ。".into(),
+        size: 20.0,
+        ..AddedText::default()
+    };
+    add_content(&mut doc, 2, &Content::Text(vertical.clone())).unwrap();
+    let bytes = write_incremental(&doc, &SaveOptions::default()).unwrap();
+    let mut renderer = pdfcraft_render::PageRenderer::new(Arc::new(bytes), pdfcraft_render::RenderConfig::default());
+    let out = renderer.render(pdfcraft_render::RenderRequest { page: 2, kind: pdfcraft_render::RequestKind::Text, scale: 1.0, ..Default::default() });
+    let text = out.text.expect("a text layer").plain_text();
+    assert_eq!(text.replace('\n', ""), vertical.text, "{text}");
+}
+
+/// pdfcraft-JPN: on 原稿用紙, a column with two digits in one square (縦中横) and a stop hung
+/// below the grid still reads in place: the text comes out in the order written.
+#[test]
+fn genko_columns_with_paired_digits_and_a_hung_stop_read_in_order() {
+    if pdfcraft_fonts::document_japanese_font_for_style(true, false).is_none() {
+        eprintln!("skipping: built without a craft-fonts Jpan face");
+        return;
+    }
+    let text = "吾輩は猫である。名前はまだ無い。\nどこで生れたかとんと見当がつかぬ。何でも薄暗いじめじめした所で、ニャーニャー泣いていた事だけは記憶している。2024年11月12日。";
+    let made = crate::added::vertical_doc::create_vertical_document(&crate::added::vertical_doc::VerticalOptions::new(
+        text.to_string(),
+        crate::added::vertical_doc::Template::Genko,
+    ))
+    .unwrap();
+    let bytes = write_full(&made.document, &SaveOptions::default()).unwrap();
+    let mut renderer = pdfcraft_render::PageRenderer::new(Arc::new(bytes), pdfcraft_render::RenderConfig::default());
+    let out = renderer.render(pdfcraft_render::RenderRequest { page: 0, kind: pdfcraft_render::RequestKind::Text, scale: 1.0, ..Default::default() });
+    let read = out.text.expect("a text layer").plain_text();
+    assert_eq!(read.replace('\n', ""), text.replace('\n', ""), "{read}");
+}
+
 /// pdfcraft-JPN: 縦中横 and ルビ keep the page's text layer reading the base text only, in order.
 #[test]
 fn ruby_and_tate_chu_yoko_read_as_the_base_text() {

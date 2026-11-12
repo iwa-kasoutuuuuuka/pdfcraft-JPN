@@ -157,3 +157,26 @@ fn redact_find_pii_reads_full_width_text() {
     assert!(text.contains("１００") && text.contains("令和"), "{text}");
     std::fs::remove_dir_all(dir).unwrap();
 }
+
+/// A column of vertical added text is one run: every hit in it is counted, and the column is
+/// marked once.
+#[test]
+fn redact_find_pii_counts_every_hit_in_a_vertical_column() {
+    if pdfcraft_fonts::document_japanese_font().is_none() {
+        eprintln!("skipping: built without craft-fonts");
+        return;
+    }
+    let dir = workdir("pii-vertical");
+    let mut a = auto(&dir);
+    let doc = ok(&mut a, "doc_create", json!({ "from": "blank", "width": 600, "height": 600 }))["doc"].as_u64().unwrap();
+    let text = "電話03-1234-5678　携帯090-1234-5678\n〒100-0001　メール taro@example.jp";
+    ok(&mut a, "page_add_text", json!({ "doc": doc, "page": 1, "text": text, "rect": [400, 20, 560, 580], "size": 14, "vertical": true }));
+    let r = ok(&mut a, "redact_find_pii", json!({ "doc": doc, "categories": ["phone", "postal-code", "email"] }));
+    assert_eq!(r["by_category"]["phone"], 2, "{r}");
+    assert_eq!(r["by_category"]["postal-code"], 1, "{r}");
+    assert_eq!(r["by_category"]["email"], 1, "{r}");
+    let marked = ok(&mut a, "redact_find_pii", json!({ "doc": doc, "categories": ["phone", "postal-code", "email"], "mark": true }));
+    let columns = marked["marked"].as_u64().unwrap();
+    assert!(columns < 4, "one mark per column, not per hit: {marked}");
+    std::fs::remove_dir_all(dir).unwrap();
+}

@@ -236,7 +236,8 @@ impl Automation {
                 let rects = text.line_rects(range.clone());
                 hits.push(json!({ "category": category.id(), "text": text.text_of(range), "page": p + 1, "rects": rects }));
                 let quads: Vec<[f64; 8]> = rects.into_iter().filter_map(|r| info.pages.get(p).map(|page| page.view_rect_to_quad(r))).collect();
-                if !quads.is_empty() {
+                // Several hits in one glyph's run share its box: mark it once.
+                if !quads.is_empty() && !marks.iter().any(|m| m.0 == p && m.1 == quads) {
                     marks.push((p, quads));
                 }
             }

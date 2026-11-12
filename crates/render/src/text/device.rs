@@ -108,7 +108,8 @@ fn merge(drawn: &[Drawn], text: String) -> Option<Drawn> {
     // pdfcraft-JPN: glyphs stacked one under another (taller than wide, by more than a glyph) are
     // a vertical column even when only two of them fit the one-line tolerance.
     // Each glyph sits right under the one before it, centred on the same column: text that only
-    // happens to span two lines (a gap between them) keeps its glyphs.
+    // happens to span two lines (a gap between them) keeps its glyphs. Two digits set side by
+    // side in one square (縦中横) stand level, each off the column's centre.
     let centre = |d: &Drawn| {
         let q = &d.2.quad;
         let (x, y) = ((q[0][0] + q[2][0]) as f64 / 2.0, (q[0][1] + q[2][1]) as f64 / 2.0);
@@ -116,7 +117,7 @@ fn merge(drawn: &[Drawn], text: String) -> Option<Drawn> {
     };
     let adjacent = drawn.windows(2).all(|w| {
         let ((a_s, a_t), (b_s, b_t)) = (centre(&w[0]), centre(&w[1]));
-        (b_s - a_s).abs() <= 0.5 * height.abs() && b_t - a_t > 0.0 && b_t - a_t <= 1.4 * height.abs()
+        (b_s - a_s).abs() <= 0.75 * height.abs() && b_t - a_t > -0.25 * height.abs() && b_t - a_t <= 1.4 * height.abs()
     });
     let stacked = drawn.len() >= 2 && adjacent && t1 - t0 > 1.5 * height.abs() && t1 - t0 > s1 - s0;
     let one_line = !stacked && drawn.iter().all(|d| compatible(u, d.1)) && t1 - t0 <= 2.0 * height.abs();
