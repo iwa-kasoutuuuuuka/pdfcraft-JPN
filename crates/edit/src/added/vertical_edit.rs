@@ -105,6 +105,29 @@ struct EditCell {
     offsets: Vec<(f64, f64)>,
 }
 
+/// `cell`, or a sideways word longer than a column in pieces that each fit one, cut where
+/// `columns` cuts it (the word's prefix widths).
+fn fit_column(cell: EditCell, length: f64) -> Vec<EditCell> {
+    if cell.kind != VerticalGlyphKind::Sideways || cell.length <= length || cell.offsets.len() < 2 {
+        return vec![cell];
+    }
+    let chars: Vec<char> = cell.text.chars().collect();
+    let end_of = |k: usize| cell.offsets.get(k).map_or(0.0, |o| o.0 + o.1);
+    let mut out = Vec::new();
+    let (mut from, mut start) = (0usize, 0.0);
+    while from < chars.len() {
+        let mut to = from + 1;
+        while to < chars.len() && end_of(to) - start <= length {
+            to += 1;
+        }
+        let end = end_of(to - 1);
+        let offsets = cell.offsets.get(from..to).unwrap_or_default().iter().map(|&(s, l)| (s - start, l)).collect();
+        out.push(EditCell { text: chars.get(from..to).unwrap_or_default().iter().collect(), kind: cell.kind, length: end - start, offsets });
+        (from, start) = (to, end);
+    }
+    out
+}
+
 /// `para` as [`EditCell`]s, with the lengths [`super::vertical::columns`] gives the same cells.
 fn edit_cells(t: &AddedText, para: &str, size: f64) -> Vec<EditCell> {
     let spacing = if t.char_spacing.is_finite() { t.char_spacing } else { 0.0 };
@@ -178,9 +201,10 @@ impl VerticalEditLayout {
         for (p, para) in paragraphs.into_iter().enumerate() {
             let mut at = 0.0;
             let mut filled = false;
-            for cell in edit_cells(t, para, size) {
+            for cell in edit_cells(t, para, size).into_iter().flat_map(|cell| fit_column(cell, column_length)) {
                 let n = cell.offsets.len();
-                let hangs = cell.text.chars().next().is_some_and(pdfcraft_fonts::no_line_start);
+                // One hung cell at most, as `columns` hangs them.
+                let hangs = at <= column_length && cell.text.chars().next().is_some_and(pdfcraft_fonts::no_line_start);
                 // As `columns` wraps: a cell that overflows a column that has something starts the next.
                 if filled && at + cell.length > column_length && !hangs {
                     used.push(at);
@@ -411,6 +435,33 @@ mod tests {
             let l = VerticalEditLayout::new(&item("あいうえおかきくけこさ", [100.0, 100.0, 200.0, 150.0]));
             assert_eq!(column_texts(&l), ["あいうえお", "かきくけこ", "さ"]);
             assert!((l.width() - 36.0).abs() < 1e-9);
+        }
+    }
+
+    /// A long run of characters that may not start a column, and a Latin word longer than one, stay
+    /// within the box: one hung cell at most, the word broken over columns, typed as committed.
+    #[test]
+    fn long_runs_and_long_words_stay_inside_the_column() {
+        for text in [
+            "あ".to_string() + &"ー".repeat(30),
+            "見て https://example.com/abcdefghijklmnopqrstuvwxyz".to_string(),
+            "あいうえ」」」」」」」」".to_string(),
+        ] {
+            let t = item(&text, [100.0, 100.0, 200.0, 150.0]);
+            let l = VerticalEditLayout::new(&t);
+            assert_eq!(l.chars(), text.chars().count());
+            for g in &l.glyphs {
+                // 50 pt columns, and one 10 pt cell may hang below.
+                assert!(g.top + g.length <= 50.0 + 10.0 + 1e-6, "{text}: {g:?}");
+            }
+            if has_face() {
+                let committed: Vec<String> = vertical::columns(&t).unwrap().iter().map(|c| c.iter().map(Cell::text).collect()).collect();
+                assert_eq!(column_texts(&l), committed, "{text}");
+                for column in vertical::columns(&t).unwrap() {
+                    let used: f64 = column.iter().map(|c| c.length(&t)).sum();
+                    assert!(used <= 50.0 + 10.0 + 1e-6, "{text}: {used}");
+                }
+            }
         }
     }
 
