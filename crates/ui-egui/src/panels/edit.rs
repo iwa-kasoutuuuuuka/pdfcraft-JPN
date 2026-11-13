@@ -249,6 +249,8 @@ pub(super) fn stamp_palette(app: &mut PdfCraftApp, ui: &mut egui::Ui, t: &Tokens
                 }
             }
         }
+        // pdfcraft-JPN: the ready-made Japanese business stamps, after the built-in groups.
+        ui.scope(|ui| crate::business_stamp_ui::palette_section(app, ui, t));
         crate::stamps_ui::palette_section(app, ui, t);
     });
 }

@@ -172,6 +172,7 @@ pub use state::{
 };
 use state::{DocumentCopyJob, GridFile};
 pub use tools::bulk_fields;
+use tools::business_stamp_ui;
 use tools::calc_order_ui;
 use tools::camera_ui;
 pub use tools::comments;
@@ -684,6 +685,9 @@ pub struct PdfCraftApp {
     /// The electronic seal being made in the stamps palette, and its preview.
     pub seal_draft: seal_ui::SealDraft,
     pub(crate) seal_preview: seal_ui::SealPreview,
+    /// The business stamp (ビジネス用スタンプ) being made in the stamps palette, and its preview.
+    pub business_draft: business_stamp_ui::BusinessDraft,
+    pub(crate) business_preview: business_stamp_ui::BusinessPreview,
     /// PDF Optimizer choices.
     pub optimize_draft: OptimizeDraft,
     /// The running optimization (Optimize PDF ▸ Advanced optimization).

@@ -378,6 +378,13 @@ fn tool_input(
                 Ok(false) => {}
                 Err(why) => frame.out.refused = Some(why),
             }
+        } else if let Some(business) = cs.business.as_ref() {
+            // pdfcraft-JPN: a business stamp is drawn when it is placed (a date line takes today).
+            match crate::business_stamp_ui::place(cx, business, today, author, free, view) {
+                Ok(true) => frame.out.stamp_placed = true,
+                Ok(false) => {}
+                Err(why) => frame.out.refused = Some(why),
+            }
         } else if crate::stamps_ui::place_custom(cx, cs, custom_line, author, free, view) {
             frame.out.stamp_placed = true;
         }

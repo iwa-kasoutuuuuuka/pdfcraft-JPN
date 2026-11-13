@@ -624,6 +624,39 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["doc", "page", "at", "name"],
             )),
+        t("page_add_business_stamp", "Add a business stamp (ビジネス用スタンプ)", "Stamp a Japanese business stamp such as 承認, 確認済, 至急, 社外秘, 回覧, 複製厳禁, 済, 重要 or 控 (or any word of 1-6 characters) on a page as a vector Stamp comment, so it can be moved, resized and deleted like any stamp (comment_edit, comment_delete). at [x, y] is its centre in points from the top-left of the displayed page. The word is bold inside an outline: frame \"rounded\" (default, one outline with rounded corners) or \"double\" (a thick outer rule and a thin inner one). date adds a date line under the word: \"today\" or yyyy-mm-dd; era true writes it with the Japanese era (令和8.11.13) instead of Western (2026.11.13). name adds a name line under it (up to 12 characters). size is the word's letter size in points (8-48, default 20); the stamp is sized around its text. color is #RRGGBB or a name (default vermilion #D91F1A). Japanese text needs the Japanese face from craft-fonts; a build without it refuses Japanese text with an error saying so. Undoable.")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "page": { "type": "integer", "minimum": 1 },
+                    "at": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                    "word": { "type": "string", "minLength": 1, "maxLength": 6 },
+                    "frame": { "type": "string", "enum": ["rounded", "double"] },
+                    "date": { "type": "string", "description": "\"today\" or yyyy-mm-dd" },
+                    "era": { "type": "boolean" },
+                    "name": { "type": "string", "maxLength": 12 },
+                    "size": { "type": "number", "minimum": 8, "maximum": 48 },
+                    "color": { "type": "string" },
+                    "author": { "type": "string" },
+                }),
+                &["doc", "page", "at", "word"],
+            )),
+        t("page_add_tally_seal", "Add a tally seal across pages (契印)", "Stamp a name seal (as page_add_seal kind \"name\") across the edge between every two consecutive pages from first to last (1-based, default the whole document; at least two pages): each page gets a Stamp comment showing exactly half the seal, touching the shared edge, both halves at the same height, so the pages laid side by side show the whole seal and a removed or swapped page shows a broken one. direction \"ltr\" (default; the next page is to the right, as in 横書き documents bound on the left): page N carries the seal's left half on its right edge and page N+1 the right half on its left edge; \"rtl\" (縦書き, bound on the right) mirrors it. y is the seal's centre in points from the top of the displayed pages (default halfway down the shorter page of each pair); the seal must fit on both pages. name is 1-6 characters (12 if all ASCII); shape circle (default) or square; size is the seal's side in points (20-200, default 48); color #RRGGBB or a name (default vermilion). One undo removes every half. Japanese text needs the Japanese face from craft-fonts.")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "first": { "type": "integer", "minimum": 1 },
+                    "last": { "type": "integer", "minimum": 1 },
+                    "name": { "type": "string", "minLength": 1, "maxLength": 12 },
+                    "shape": { "type": "string", "enum": ["circle", "square"] },
+                    "size": { "type": "number", "minimum": 20, "maximum": 200 },
+                    "color": { "type": "string" },
+                    "direction": { "type": "string", "enum": ["ltr", "rtl"] },
+                    "y": { "type": "number" },
+                    "author": { "type": "string" },
+                }),
+                &["doc", "name"],
+            )),
         t("model_add", "Add a 3D model", "Add a 3D model (Acrobat: Rich Media ▸ Add 3D): the U3D or PRC file at path, recognised by its first bytes, as a 3D annotation in rect [x0, y0, x1, y1] (points from the top-left of the displayed page; each side 1–14400 pt; at most 256 MiB). Its poster, what prints and what readers show until the model is activated, is the picture at poster (a PDF page, poster_page default 1, or an image) fitted inside rect keeping its shape and centred; without poster, a frame labelled \"3D model\". activation: click (default), page_open or page_visible. name is its description (default: the file name). No views are added: readers open the model on its own default view. Undoable.")
             .with(schema(
                 json!({

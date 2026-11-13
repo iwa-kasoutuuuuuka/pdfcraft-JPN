@@ -4290,6 +4290,30 @@ evidence = ["crates/engine/src/seal/tests.rs::a_name_is_set_vertically_and_fits_
 notes = "pdfcraft-JPN. Not an Acrobat feature: the Japanese 認印/名前印 (the name set vertically in a red circle or 角印 square) and データ印 (organisation, date and name in three bands). Placed as a vector Stamp comment (a custom stamp whose appearance is a generated one-page PDF), so it moves, resizes and deletes like any stamp; the Edit tab's stamp palette has a Seal section (name, kind, shape, department, date or era date, colour, size, preview). Text is the Gothic face from craft-fonts; a build without a Japanese face refuses Japanese text with a message saying so"
 
 [[feature]]
+id = "comment.stamps-business-ja"
+title = "Japanese business stamps (ビジネス用スタンプ: 承認, 至急, 社外秘...)"
+area = "E"
+tier = "P2"
+milestone = "M5"
+status = "shipped"
+commands = []
+tools = ["page_add_business_stamp"]
+evidence = ["crates/engine/src/seal/business/tests.rs::every_preset_fits_inside_its_frame", "crates/engine/src/seal/business/tests.rs::a_date_and_a_name_go_under_the_word_with_a_rule", "crates/engine/src/seal/business/tests.rs::a_placed_business_stamp_is_a_stamp_comment", "crates/automation/tests/it/seal.rs::a_business_stamp_is_a_stamp_comment_with_its_words"]
+notes = "pdfcraft-JPN. Not an Acrobat feature: ready-made Japanese office stamps (承認, 確認済, 至急, 社外秘, 回覧, 複製厳禁, 済, 重要, 控, or any word of up to 6 characters) in our own design, a rounded outline or a double rule, with an optional date line (Western or era) and name line, vermilion by default. Placed as a vector Stamp comment like the seals; the stamp palette has a Business stamps section under the Seal section"
+
+[[feature]]
+id = "comment.stamps-tally-seal"
+title = "Tally seal across pages (契印)"
+area = "E"
+tier = "P2"
+milestone = "M5"
+status = "shipped"
+commands = []
+tools = ["page_add_tally_seal"]
+evidence = ["crates/engine/src/seal/tally/tests.rs::the_halves_meet_at_the_shared_edge_at_the_same_height", "crates/engine/src/seal/tally/tests.rs::each_half_pdf_is_cropped_to_its_half", "crates/engine/src/seal/tally/tests.rs::a_tally_seal_across_a_range_is_one_undo_step", "crates/automation/tests/it/seal.rs::a_tally_seal_puts_half_a_seal_on_each_side_of_every_page_edge"]
+notes = "pdfcraft-JPN. Not an Acrobat feature: a name seal split over the edge between every two consecutive pages of a range, each page carrying a Stamp comment cut (by its picture's crop box) to exactly half the seal, touching the shared edge at the same height; left-to-right (横書き) or mirrored right-to-left (縦書き) documents. One undo step. 割印 across two separate documents is not done. The Seal section of the stamp palette has a 契印 control (page range, height, direction)"
+
+[[feature]]
 id = "comment.stamps-sign-here"
 title = "Sign-here stamps"
 area = "E"
