@@ -868,6 +868,7 @@ impl Automation {
             "ocr_status" => self.ocr_status()?,
             "ocr_recognize_files" => self.ocr_recognize_files(&a)?,
             "export_text" => self.export_text(&a)?,
+            "export_tables_csv" => self.export_tables_csv(&a)?,
             "ocr_folder" => self.ocr_folder(&a)?,
             "ocr_words" => self.ocr_words(&a)?,
             "ocr_review_apply" => self.ocr_review_apply(&a)?,

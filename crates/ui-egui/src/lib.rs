@@ -211,6 +211,7 @@ use workflows::ocr_web;
 use workflows::optimize_ui;
 use workflows::print_ui;
 use workflows::scan_clean_ui;
+use workflows::table_csv_ui;
 use workflows::vertical_ui;
 use workflows::web_print;
 
@@ -604,6 +605,8 @@ pub struct PdfCraftApp {
     pub ocr_run: Option<ocr_ui::OcrRun>,
     /// Scan & OCR: Export recognized text: the dialog's choices.
     pub ocr_export_draft: ocr_export_ui::OcrExportDraft,
+    /// Scan & OCR: Export tables to CSV: the dialog's choices.
+    pub table_csv_draft: table_csv_ui::TableCsvDraft,
     /// Scan & OCR: OCR a folder: the dialog's choices, the running job and the last summary.
     pub ocr_folder: ocr_folder_ui::OcrFolderState,
     pub ocr_batch: Option<std::sync::Arc<std::sync::Mutex<ocr_ui::BatchProgress>>>,

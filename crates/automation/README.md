@@ -367,6 +367,14 @@ is `auto` (a page whose text is mostly vertical), `on` or `off`. `ocr_if_needed`
 selected pages that have no text layer (language `ja` and engine `auto` unless given; the open
 document is not changed). The result lists `ocr_pages`, `vertical_pages` and `empty_pages`.
 
+`export_tables_csv {doc, path, layout?, pages?, use_rules?, ocr_if_needed?}` finds tables from where
+the text of pages sits and writes them as CSV for Excel: UTF-8 with a BOM, CRLF, RFC 4180 quoting
+(fields that look like formulas get a leading `'`). Drawn grids decide their cells; elsewhere rows
+are lines and columns are the whitespace gutters the rows share, so Japanese cells are split by
+geometry, not spaces. `layout: "per_table"` (default) writes `<stem>_p<page>_t<n>.csv` beside
+`path`; `"one_file"` writes every table to `path`, a blank line between tables. Nothing is written
+when no table is found.
+
 `ocr_folder {folder, recursive?, output_dir?, suffix?, skip_with_text?, overwrite?}` makes every PDF
 in a folder searchable, one file at a time (same OCR defaults). Results go beside the sources as
 `<name>_ocr.pdf`, or into `output_dir` under the same names and subfolders. A source is replaced only

@@ -71,6 +71,7 @@ struct Pending {
     a11y_now: bool,
     ocr_now: bool,
     ocr_export_now: bool,
+    table_csv_now: bool,
     scan_clean_now: bool,
     compare_now: bool,
     images_now: bool,
@@ -451,6 +452,12 @@ fn dialog_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, dialog: Dialog, req: &m
         Dialog::ExportOcrText => {
             let (go, cancel) = crate::ocr_export_ui::body(ui, app, &t);
             req.ocr_export_now = go;
+            req.close = go || cancel;
+            return false;
+        }
+        Dialog::ExportTablesCsv => {
+            let (go, cancel) = crate::table_csv_ui::body(ui, app, &t);
+            req.table_csv_now = go;
             req.close = go || cancel;
             return false;
         }
@@ -2270,6 +2277,9 @@ fn finish_close(app: &mut PdfCraftApp, dialog: Dialog, modal_closed: bool, req: 
     }
     if req.ocr_export_now {
         app.start_ocr_export();
+    }
+    if req.table_csv_now {
+        app.start_table_csv_export();
     }
     if req.compare_now {
         app.run_compare();

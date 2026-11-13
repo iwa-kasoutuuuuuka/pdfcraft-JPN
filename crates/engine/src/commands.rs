@@ -377,6 +377,7 @@ pub const COMMANDS: &[CommandSpec] = &[
     c("ocr.recognize_batch", "Recognize text in multiple files…", None, None, Nothing, "files"),
     c("ocr.correct", "Correct recognized text…", None, None, Document, "text-select"),
     c("ocr.export_text", "Export recognized text…", None, None, Copying, "file-output"),
+    c("ocr.export_tables_csv", "Export tables to CSV…", None, None, Copying, "file-spreadsheet"),
     c("ocr.folder", "OCR a folder…", None, None, Nothing, "files"),
     c("a11y.check", "Check for accessibility…", None, None, Document, "accessibility"),
     c("a11y.find_untagged", "Find untagged content", None, None, Document, "search"),

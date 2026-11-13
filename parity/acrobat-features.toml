@@ -7047,6 +7047,18 @@ evidence = ["crates/automation/tests/it/ocr_text_folder.rs::export_text_writes_t
 notes = "Scan & OCR > Export recognized text. Reading order with vertical columns right to left, one paragraph per block of lines. Word output tags the text as Japanese (w:lang eastAsia ja-JP, East Asian font slot) and writes vertical pages as tbRl sections (vertical auto/on/off). Optionally reads pages without a text layer first on a scratch copy (language ja, engine auto). Plain text separates pages with a numbered line or form feeds."
 
 [[feature]]
+id = "ocr.export-tables-csv"
+title = "Export tables to CSV (from page text, OCR text included), Excel-ready for Japanese"
+area = "I"
+tier = "P2"
+milestone = "M10"
+status = "shipped"
+commands = ["ocr.export_tables_csv"]
+tools = ["export_tables_csv"]
+evidence = ["crates/automation/tests/it/table_csv.rs::export_tables_csv_writes_excel_ready_csv_per_table_or_in_one_file", "crates/engine/src/table_csv/tests.rs::ruled_lines_decide_the_cells_and_layouts_split_or_join_the_files"]
+notes = "Scan & OCR > Export tables to CSV. Tables found from positioned text: drawn grids (rules that meet) decide their cells, otherwise rows by vertical overlap and columns from whitespace gutters shared by the rows; cells split by geometry, never spaces, Japanese joined without spaces. UTF-8 with BOM, CRLF, RFC 4180 quoting, formula-looking fields defused. One CSV per table or all in one file; optional OCR first on a scratch copy. Horizontal text only; spanning cells in unruled tables may shift columns."
+
+[[feature]]
 id = "ocr.folder-batch"
 title = "OCR a whole folder into searchable PDFs"
 area = "I"

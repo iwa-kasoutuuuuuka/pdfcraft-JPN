@@ -183,6 +183,8 @@ pub enum Dialog {
     EnhanceScan,
     /// Scan & OCR ▸ Export recognized text (txt / Word).
     ExportOcrText,
+    /// Scan & OCR ▸ Export tables to CSV.
+    ExportTablesCsv,
     /// Scan & OCR ▸ OCR a folder.
     OcrFolder,
     /// The JavaScript console (⌘J).

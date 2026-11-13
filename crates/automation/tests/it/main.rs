@@ -25,5 +25,6 @@ mod redact_after_stray_q_form;
 mod redact_text_after_q;
 mod render_warnings;
 mod seal;
+mod table_csv;
 mod text_copy;
 mod unreadable_objects;

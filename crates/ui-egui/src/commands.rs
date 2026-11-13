@@ -541,6 +541,7 @@ impl PdfCraftApp {
             "ocr.recognize" => self.dialog = Some(Dialog::RecognizeText),
             "ocr.enhance" => self.dialog = Some(Dialog::EnhanceScan),
             "ocr.export_text" => self.dialog = Some(Dialog::ExportOcrText),
+            "ocr.export_tables_csv" => self.dialog = Some(Dialog::ExportTablesCsv),
             "ocr.folder" => self.dialog = Some(Dialog::OcrFolder),
             "ocr.recognize_batch" => self.ocr_files_dialog(),
             "ocr.correct" => self.ocr_verify.open = true,
