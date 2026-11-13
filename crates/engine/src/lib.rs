@@ -28,6 +28,7 @@ pub use copy_image::{PagePicture, picture_at};
 pub mod dates;
 mod document;
 mod edit;
+pub mod era_dates;
 mod error;
 pub mod export;
 pub mod field_table;

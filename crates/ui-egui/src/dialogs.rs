@@ -12,6 +12,7 @@ pub mod bookmark_styles_ui;
 pub(super) mod comment_props;
 pub(super) mod convert_colours_ui;
 pub(super) mod credits;
+pub(super) mod era_dates_ui;
 pub(super) mod hairlines_ui;
 pub(super) mod marks_ui;
 pub(super) mod pageboxes;
@@ -157,6 +158,7 @@ fn dialogs(app: &mut PdfCraftApp, ctx: &egui::Context) {
             Dialog::About => 820.0,
             Dialog::PinTool => 540.0,
             Dialog::CreateVertical => 640.0,
+            Dialog::ConvertDates => 620.0,
             _ => 520.0,
         });
         if dialog_body(ui, app, dialog, &mut req) {
@@ -172,6 +174,10 @@ fn dialog_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, dialog: Dialog, req: &m
     match dialog {
         Dialog::WordCount => {
             req.close = crate::word_count_ui::body(ui, app);
+        }
+        Dialog::ConvertDates => {
+            req.close = crate::era_dates_ui::body(ui, app);
+            return false;
         }
         Dialog::CreateImages => {
             let (go, cancel) = crate::create_ui::image_import_body(ui, app);

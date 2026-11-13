@@ -10491,3 +10491,15 @@ commands = ["edit.text"]
 tools = ["page_add_text", "content_update"]
 evidence = ["crates/ui-egui/tests/it/content.rs::vertical_text_is_typed_in_its_columns", "crates/edit/src/added/vertical_edit.rs::arrows_move_along_and_across_columns", "crates/edit/src/added/vertical_edit.rs::a_click_finds_the_caret_in_its_column", "crates/edit/src/added/vertical_edit.rs::the_typed_text_wraps_where_the_committed_text_does", "crates/edit/src/added/vertical_edit.rs::no_text_and_any_index_are_safe"]
 notes = "pdfcraft-JPN. While a vertical added-text box (vertical = true) is typed or retyped in place, the editor draws it in the columns the page will draw (right to left, upright Japanese, sideways Latin words, 縦中横), with a horizontal caret bar, selection along the columns and the IME candidate window at the caret. Up/Down move to the previous/next character, Left/Right to the next/previous column, Home/End to the column's ends (Ctrl/Cmd: the text's), Shift extends; clicks, drags and double clicks place the caret by the columns. Ruby markup stays as typed while editing; punctuation's vertical forms are approximated by turning or moving the interface glyphs. Headless use needs no new tool: page_add_text and content_update already take vertical."
+
+[[feature]]
+id = "edit.convert-japanese-dates"
+title = "Find dates and convert them between the Japanese era and Western calendars (和暦/西暦の一括変換)"
+area = "C"
+tier = "P2"
+milestone = "M7"
+status = "shipped"
+commands = ["edit.convert_dates"]
+tools = ["dates_find_ja", "dates_convert_ja"]
+evidence = ["crates/engine/src/era_dates/tests.rs::era_boundaries_are_exact", "crates/engine/src/era_dates/tests.rs::phone_numbers_and_digit_runs_are_not_dates", "crates/engine/src/era_dates/tests.rs::full_width_digits_are_read_and_kept", "crates/automation/tests/it/era_dates.rs::dates_find_ja_lists_dates_in_page_text_comments_and_fields", "crates/automation/tests/it/era_dates.rs::dates_convert_ja_replaces_page_text_comments_and_fields_in_one_undo_step", "crates/ui-egui/tests/it/era_dates.rs::convert_dates_dialog_converts_the_checked_dates_to_the_chosen_calendar"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. Finds era dates (令和6年5月1日, 令和元年, R6.5.1, H31/4/30) and Western dates (2024年5月1日, 2024/5/1, 2024-05-01, 2024.5.1) in page text, comment text and text field values, full-width digits included; phone numbers and digit runs are not dates. Era days are exact (平成31年5月1日 is flagged, never converted). Converts in kanji style with 元年 as one undo step. Page text goes through the Edit text line rewrite, tried on a copy first; a line the rewrite refuses or that would not read back is reported and left unchanged. Fields with a date or number format script are left alone."

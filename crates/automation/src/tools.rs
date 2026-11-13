@@ -624,6 +624,28 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["doc", "page", "at", "name"],
             )),
+        t("dates_find_ja", "Find dates (和暦/西暦)", "Find the dates in a document's page text (by line, as text_lines lists it), comment text and text field values, and say what each converts to in the calendar to: japanese (和暦, default) or western (西暦). Recognised: era dates 令和6年5月1日, 令和元年, 平成31年4月, R6.5.1, H31/4/30, R6年5月1日 (spaces between the parts allowed), and Western dates 2024年5月1日, 2024年5月, 2024/5/1, 2024-05-01, 2024.5.1 (a Western year alone, 2024年, is not taken). Full-width digits and separators are read as ASCII. Phone numbers and longer digit runs are not dates. Era dates are checked against the era's exact days: 平成31年5月1日, 令和元年4月 or 昭和64年1月8日 are status invalid with problem outside-era; no-such-day (2月30日), before-meiji (no era form) and ambiguous (a Western year or month spanning two eras, 1989年1月) are the other problems. Conversions are written in kanji style (R6.5.1 gives 2024年5月1日; year 1 is 元年) with the source's digit width; a date already in the target calendar is status already. Returns hits in page order (hit number, page, source kind page-text/comment/field with line, comment index or field name, text, status convert/already/invalid, converted or problem and note) with counts. page_text_withheld: true when the document's security doesn't allow copying, so page text was not read. Read only; dates_convert_ja applies.")
+            .ro()
+            .cmd("edit.convert_dates")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "to": { "type": "string", "enum": ["japanese", "western"], "description": "The calendar to convert to (default japanese)." },
+                    "pages": pages("to search (default: all; fields on no page are read only then)"),
+                }),
+                &["doc"],
+            )),
+        t("dates_convert_ja", "Convert dates (和暦/西暦)", "Convert the dates dates_find_ja finds (same doc, to and pages) to the calendar to, as one undoable edit: every hit with status convert, or only the hit numbers listed in hits (from a dates_find_ja call on the unchanged document). Comment text and text field values are replaced (fields with a date or number format script, read-only fields and values too long for the field are left alone). Page text is rewritten line by line in place as text_edit rewrites a line, in its own font when it has the characters, else a craft-fonts Japanese face; each rewrite is tried on a copy first, and a line the rewrite refuses, or that would not read back as the converted text, is left unchanged and listed in skipped with the reason. Invalid and already-converted hits are skipped. Returns replaced and skipped (page, kind, text, converted or reason).")
+            .cmd("edit.convert_dates")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "to": { "type": "string", "enum": ["japanese", "western"], "description": "The calendar to convert to (default japanese)." },
+                    "pages": pages("to search (default: all)"),
+                    "hits": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 1, "description": "Hit numbers from dates_find_ja to convert (default: every convertible hit)." },
+                }),
+                &["doc"],
+            )),
         t("model_add", "Add a 3D model", "Add a 3D model (Acrobat: Rich Media ▸ Add 3D): the U3D or PRC file at path, recognised by its first bytes, as a 3D annotation in rect [x0, y0, x1, y1] (points from the top-left of the displayed page; each side 1–14400 pt; at most 256 MiB). Its poster, what prints and what readers show until the model is activated, is the picture at poster (a PDF page, poster_page default 1, or an image) fitted inside rect keeping its shape and centred; without poster, a frame labelled \"3D model\". activation: click (default), page_open or page_visible. name is its description (default: the file name). No views are added: readers open the model on its own default view. Undoable.")
             .with(schema(
                 json!({

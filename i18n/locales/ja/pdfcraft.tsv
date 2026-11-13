@@ -4716,3 +4716,25 @@ calendar weekday	We	水
 	Choose a text file	テキストファイルを選択
 	The results would replace the original files: add a suffix or choose another output folder	結果が元のファイルを置き換えてしまいます。接尾辞を付けるか、別の保存先フォルダーを選んでください
 	Could not start text recognition	テキスト認識を開始できませんでした
+	Convert dates (Japanese era / Western)…	和暦/西暦の一括変換…
+	Convert dates (Japanese era / Western)	和暦/西暦の一括変換
+	Convert dates	日付の変換
+	Japanese era (令和6年5月1日)	和暦(令和6年5月1日)
+	Western (2024年5月1日)	西暦(2024年5月1日)
+	The document's security doesn't allow copying, so its page text was not searched.	この文書はコピーが許可されていないため、ページの文字は探していません。
+	{found} dates found, {convertible} to convert	日付 {found} 件、うち変換できるもの {convertible} 件
+	No dates found.	日付は見つかりませんでした。
+	Page text	ページの文字
+	Form field	フォームフィールド
+	Already in this calendar	変換不要(すでにこの暦です)
+	Invalid date: there is no such day	無効な日付: その日は存在しません
+	Invalid date: the era does not include this day	無効な日付: その元号にこの日はありません
+	Before Meiji: no era form	明治より前のため和暦にできません
+	Spans two eras: convert it by hand	2 つの元号にまたがります(手で直してください)
+	{replaced} replaced, {skipped} left unchanged.	{replaced} 件を置き換え、{skipped} 件はそのままにしました。
+	The dates could not be converted; the document was not changed.	日付を変換できませんでした。文書は変更されていません。
+	Nothing to convert	変換するものがありません
+	The text changed since the dates were found; find them again	見つけたあとで文字が変わりました。もう一度探してください
+	This line of page text can't be rewritten in place	このページの行はその場で書き換えられません
+	The rewritten line would not read back as the converted text	書き換えた行が変換後の文字として読み取れません
+	The converted date is longer than the field allows	変換後の日付がフィールドの最大文字数を超えます
