@@ -829,6 +829,8 @@ impl Automation {
             "comment_add" => self.comment_add(&a)?,
             "stamp_custom" => self.stamp_custom(&a)?,
             "page_add_seal" => self.page_add_seal(&a)?,
+            "page_add_business_stamp" => self.page_add_business_stamp(&a)?,
+            "page_add_tally_seal" => self.page_add_tally_seal(&a)?,
             "model_add" => self.model_add(&a)?,
             "comment_reply" => self.comment_reply(&a)?,
             "comment_set_status" => self.comment_set_status(&a)?,

@@ -271,6 +271,8 @@ impl PdfCraftApp {
             stamp_draft: Default::default(),
             seal_draft: Default::default(),
             seal_preview: Default::default(),
+            business_draft: Default::default(),
+            business_preview: Default::default(),
             optimize_draft: OptimizeDraft::default(),
             optimize_run: None,
             scan_clean_draft: scan_clean_ui::ScanCleanDraft::default(),

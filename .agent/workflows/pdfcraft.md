@@ -42,6 +42,8 @@ pdfcraft-cli mcp install --target antigravity --root <作業フォルダ>
 
 - 日本語向けの追加ツール(pdfcraft-JPN):
   - `page_add_seal`: 電子印鑑(`kind: "name"` の認印、`kind: "date"` のデータ印。`org`・`date`(`today` か `yyyy-mm-dd`)・`era: true` で和暦)。
+  - `page_add_tally_seal`: 契印。`first`〜`last` の隣り合うページの境目に印鑑を半分ずつ押す(`direction: "rtl"` で縦書きの並び、`y` で高さ)。
+  - `page_add_business_stamp`: ビジネス用スタンプ(`word`: 承認・確認済・至急・社外秘・回覧・複製厳禁・済・重要・控 など。`frame: "double"` で二重枠、`date`・`era`・`name` で日付と名前の行)。
   - `create_vertical_document`: 本文から縦書き文書を作る(`template`: `genko` 原稿用紙 / `binsen` 便箋 / `plain`)。
   - `text_find` と `redact_mark` の `ignore_variants: true`: 全角/半角・ひらがな/カタカナ・旧字体の違いを無視して探す。
   - `redact_find_pii`: マイナンバー・電話番号・郵便番号・メール(・住所)を探す。`mark: true` で墨消しの印を付けるだけで、消すのは `redact_apply`。適用の前に必ずユーザーに確認する。

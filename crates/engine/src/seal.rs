@@ -213,14 +213,14 @@ fn is_ascii_text(s: &str) -> bool {
 }
 
 /// A message for Japanese text without a Japanese face, else `None`.
-fn missing_font(text: &str) -> Option<String> {
+pub(crate) fn missing_font(text: &str) -> Option<String> {
     let c = text.chars().find(|&c| pdfcraft_fonts::shaped_text::is_japanese(c) && !pdfcraft_fonts::japanese_has(c))?;
     Some(format!(
         "no Japanese font is embedded in this build, so {c:?} can't be drawn on a seal; use a build with the Japanese fonts (CRAFT_FONTS_DIR, see AGENTS.md) or write the seal in ASCII letters"
     ))
 }
 
-fn item(text: &str, rect: [f64; 4], size: f64, vertical: bool, bold: bool, color: [f64; 3]) -> AddedText {
+pub(crate) fn item(text: &str, rect: [f64; 4], size: f64, vertical: bool, bold: bool, color: [f64; 3]) -> AddedText {
     AddedText {
         rect,
         text: text.into(),
@@ -238,7 +238,7 @@ fn item(text: &str, rect: [f64; 4], size: f64, vertical: bool, bold: bool, color
 }
 
 /// The width of `text` at 10 points.
-fn width_per_10(text: &str, bold: bool) -> f64 {
+pub(crate) fn width_per_10(text: &str, bold: bool) -> f64 {
     text_width(&item(text, [0.0, 0.0, GRID * 10.0, 20.0], 10.0, false, bold, [0.0; 3]))
 }
 
@@ -284,7 +284,7 @@ fn fit_line(shape: SealShape, text: &str, bold: bool, yc: f64, max_half: f64, ca
     Err(format!("\"{text}\" is too long to fit on the seal; shorten it"))
 }
 
-fn check_text(label: &str, text: &str, max: usize) -> Result<(), String> {
+pub(crate) fn check_text(label: &str, text: &str, max: usize) -> Result<(), String> {
     if text.chars().any(char::is_control) {
         return Err(format!("the {label} can't contain control characters"));
     }
@@ -295,7 +295,7 @@ fn check_text(label: &str, text: &str, max: usize) -> Result<(), String> {
 }
 
 /// Characters a seal draws: Japanese text, and ASCII letters, digits and common punctuation.
-fn is_seal_char(c: char) -> bool {
+pub(crate) fn is_seal_char(c: char) -> bool {
     c == ' ' || c.is_ascii_graphic() || (pdfcraft_fonts::shaped_text::is_japanese(c) && !c.is_ascii())
 }
 
@@ -418,7 +418,7 @@ pub fn seal_layout(spec: &SealSpec) -> Result<SealLayout, String> {
     Ok(l)
 }
 
-fn num(v: f64) -> String {
+pub(crate) fn num(v: f64) -> String {
     let s = format!("{v:.3}");
     s.trim_end_matches('0').trim_end_matches('.').to_string()
 }
@@ -467,6 +467,12 @@ fn vector_ops(l: &SealLayout, color: [f64; 3]) -> Vec<u8> {
 
 /// The seal as a one-page PDF (the page is `spec.size` points square, nothing behind the seal).
 pub fn seal_pdf(spec: &SealSpec) -> Result<Vec<u8>, String> {
+    let doc = seal_document(spec)?;
+    pdfcraft_cos::write_full(&doc, &pdfcraft_cos::SaveOptions::default()).map_err(|e| e.to_string())
+}
+
+/// The seal drawn on a page of its own size (what [`seal_pdf`] saves).
+pub(crate) fn seal_document(spec: &SealSpec) -> Result<pdfcraft_cos::Document, String> {
     let layout = seal_layout(spec)?;
     let mut doc = pdfcraft_create::blank(layout.size, layout.size, 1).map_err(|e| e.to_string())?;
     for t in &layout.texts {
@@ -474,7 +480,7 @@ pub fn seal_pdf(spec: &SealSpec) -> Result<Vec<u8>, String> {
         add_content(&mut doc, 0, &Content::Text(text)).map_err(|e| e.to_string())?;
     }
     pdfcraft_edit::stamp(&mut doc, 0, "Seal", vector_ops(&layout, spec.color)).map_err(|e| e.to_string())?;
-    pdfcraft_cos::write_full(&doc, &pdfcraft_cos::SaveOptions::default()).map_err(|e| e.to_string())
+    Ok(doc)
 }
 
 /// The text a seal stands for: its comment's contents (印鑑 and what the seal reads).
@@ -488,6 +494,9 @@ pub fn seal_description(spec: &SealSpec) -> String {
         }
     }
 }
+
+pub mod business;
+pub mod tally;
 
 #[cfg(test)]
 mod tests;

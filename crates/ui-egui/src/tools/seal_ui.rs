@@ -8,6 +8,7 @@
 use std::sync::Arc;
 
 use egui::Ui;
+use pdfcraft_engine::seal::tally::{TallyDirection, tally_seal_edit};
 use pdfcraft_engine::seal::{DEFAULT_SEAL_COLOR, DEFAULT_SEAL_SIZE, SealKind, SealShape, SealSpec, parse_seal_date, seal_edit, seal_pdf};
 use serde::{Deserialize, Serialize};
 
@@ -198,6 +199,99 @@ pub(crate) fn palette_section(app: &mut PdfCraftApp, ui: &mut Ui, t: &Tokens) {
     if ui.add_enabled_ui(ready, |ui| widgets::pill_button(ui, tl!("Use this seal"), true)).inner.clicked() {
         use_seal(app, today);
     }
+    tally_section(app, ui, t, today, ready);
+}
+
+/// Where the tally seal (契印) goes, as the palette edits it. Kept in egui's memory for the
+/// session: it belongs to the document at hand, not to the settings.
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct TallyDraft {
+    /// The first and last page, 1-based; `last` 0 is the last page of the document.
+    pub first: usize,
+    pub last: usize,
+    /// The next page is to the left (縦書き) rather than the right (横書き).
+    pub right_to_left: bool,
+    /// The seal's height on the page: 0 top, 1 middle, 2 bottom.
+    pub height: u8,
+}
+
+impl Default for TallyDraft {
+    fn default() -> Self {
+        TallyDraft { first: 1, last: 0, right_to_left: false, height: 1 }
+    }
+}
+
+impl TallyDraft {
+    /// The 0-based range, the direction and the height (`None`: halfway down) for a document of
+    /// `pages` pages and a seal of side `size`. `Err` says what to change.
+    pub fn resolve(&self, pages: &[pdfcraft_render::PageInfo], size: f64) -> Result<(usize, usize, TallyDirection, Option<f64>), String> {
+        let n = pages.len();
+        let last = if self.last == 0 { n } else { self.last.min(n) };
+        let first = self.first.max(1);
+        if n < 2 || first >= last {
+            return Err(tl!("A tally seal needs two or more pages: choose a later last page").to_string());
+        }
+        let direction = if self.right_to_left { TallyDirection::RightToLeft } else { TallyDirection::LeftToRight };
+        // A margin of a quarter of the seal from the top or the bottom edge of the shortest page.
+        let shortest = pages.get(first - 1..last).into_iter().flatten().map(|p| f64::from(p.height)).fold(f64::INFINITY, f64::min);
+        let y = match self.height {
+            0 => Some(size * 0.75),
+            2 if shortest.is_finite() => Some(shortest - size * 0.75),
+            _ => None,
+        };
+        Ok((first - 1, last - 1, direction, y))
+    }
+}
+
+/// 契印: stamp the seal being made across the edge between every two pages of a range.
+fn tally_section(app: &mut PdfCraftApp, ui: &mut Ui, t: &Tokens, today: (i64, u32, u32), ready: bool) {
+    let id = ui.ctx().viewport_id().root_ui_id().with_salt(egui::IdSalt::new("tally-seal-draft"));
+    let mut draft: TallyDraft = ui.data_mut(|d| d.get_temp(id)).unwrap_or_default();
+    let pages = app.active_ids().and_then(|(_, doc)| app.session.get(doc)).map(|d| d.info.pages.clone()).unwrap_or_default();
+    let mut stamp = false;
+    egui::CollapsingHeader::new(tl!("Stamp as a tally seal (契印)")).id_salt("tally-seal").show(ui, |ui| {
+        ui.label(egui::RichText::new(tl!("Stamps this seal across the edge between each two pages, half on each page.")).small().color(t.text_faint));
+        let n = pages.len().max(1);
+        widgets::begin_dialog(ui);
+        egui::Grid::new("tally-seal-fields").num_columns(2).spacing([8.0, 6.0]).show(ui, |ui| {
+            ui.label(tl!("First page:"));
+            ui.add(egui::DragValue::new(&mut draft.first).range(1..=n));
+            ui.end_row();
+            ui.label(tl!("Last page:"));
+            let mut last = if draft.last == 0 { n } else { draft.last.min(n) };
+            if ui.add(egui::DragValue::new(&mut last).range(1..=n)).changed() {
+                draft.last = if last == n { 0 } else { last };
+            }
+            ui.end_row();
+            ui.label(tl!("Height:"));
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut draft.height, 0, tl!("Top"));
+                ui.selectable_value(&mut draft.height, 1, tl!("Middle"));
+                ui.selectable_value(&mut draft.height, 2, tl!("Bottom"));
+            });
+            ui.end_row();
+        });
+        ui.horizontal(|ui| {
+            ui.selectable_value(&mut draft.right_to_left, false, tl!("Next page on the right (横書き)"));
+            ui.selectable_value(&mut draft.right_to_left, true, tl!("Next page on the left (縦書き)"));
+        });
+        stamp = ui.add_enabled_ui(ready && pages.len() >= 2, |ui| widgets::pill_button(ui, tl!("Stamp tally seal"), true)).inner.clicked();
+    });
+    ui.data_mut(|d| d.insert_temp(id, draft.clone()));
+    if !stamp {
+        return;
+    }
+    let author = app.comment_prefs.author.clone();
+    let edit = app.seal_draft.spec(today).and_then(|spec| {
+        let (first, last, direction, y) = draft.resolve(&pages, spec.size)?;
+        tally_seal_edit(&spec, &pages, first, last, direction, y, &author)
+    });
+    match edit {
+        Ok(edit) => {
+            app.apply_edit(edit);
+        }
+        Err(e) => app.notify_error(&e),
+    }
 }
 
 /// Keep the seal in the stamp library (replacing one with the same label) and choose it.
@@ -219,6 +313,7 @@ fn use_seal(app: &mut PdfCraftApp, today: (i64, u32, u32)) {
         data: Arc::new(bytes),
         line: None,
         seal: Some(draft),
+        business: None,
     };
     let at = match app.custom_stamps.iter().position(|s| s.category == category && s.name == name) {
         Some(i) => {
@@ -288,11 +383,35 @@ mod tests {
             data: Arc::new(vec![1, 2, 3]),
             line: None,
             seal: Some(draft.clone()),
+            business: None,
         };
         let json = crate::stamps_ui::encode(std::slice::from_ref(&stamp));
         assert_eq!(crate::stamps_ui::decode(&json), vec![stamp]);
         let old = serde_json::json!([{ "category": "c", "name": "n", "file": "f.png", "data": "AQID" }]);
         assert!(crate::stamps_ui::decode(&old)[0].seal.is_none());
+    }
+
+    /// The tally seal's range runs to the last page by default, refuses a single page, and its
+    /// height choice turns into a centre a quarter seal in from the top or bottom edge.
+    #[test]
+    fn the_tally_range_and_height_resolve_for_the_document() {
+        let page = |h: f32| pdfcraft_render::PageInfo { width: 300.0, height: h, label: "1".into(), crop: [0.0, 0.0, 300.0, h], rotation: 0 };
+        let pages = [page(400.0), page(380.0), page(400.0)];
+        let d = TallyDraft::default();
+        assert_eq!(d.resolve(&pages, 40.0).unwrap(), (0, 2, TallyDirection::LeftToRight, None), "every page, halfway down");
+        let top = TallyDraft { height: 0, first: 2, right_to_left: true, ..TallyDraft::default() };
+        assert_eq!(top.resolve(&pages, 40.0).unwrap(), (1, 2, TallyDirection::RightToLeft, Some(30.0)));
+        let bottom = TallyDraft { height: 2, ..TallyDraft::default() };
+        assert_eq!(bottom.resolve(&pages, 40.0).unwrap().3, Some(350.0), "from the bottom of the shortest page");
+        assert!(TallyDraft { first: 3, ..TallyDraft::default() }.resolve(&pages, 40.0).is_err(), "one page is no tally seal");
+        assert!(TallyDraft::default().resolve(&pages[..1], 40.0).is_err());
+        // The resolved range makes one stamp per half.
+        let spec = SealDraft { name: "Abe".into(), ..SealDraft::default() }.spec((2026, 11, 13)).unwrap();
+        let (first, last, dir, y) = d.resolve(&pages, spec.size).unwrap();
+        let pdfcraft_engine::Edit::Batch { edits, .. } = tally_seal_edit(&spec, &pages, first, last, dir, y, "Ada").unwrap() else {
+            panic!("a batch")
+        };
+        assert_eq!(edits.len(), 4);
     }
 
     #[test]

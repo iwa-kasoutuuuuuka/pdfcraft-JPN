@@ -35,6 +35,10 @@ pub struct CustomStamp {
     /// `data` is the seal as it was made.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seal: Option<crate::seal_ui::SealDraft>,
+    /// A business stamp (ビジネス用スタンプ) drawn when it is placed, so a date line takes that
+    /// day's date. `data` is the stamp as it was made.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub business: Option<crate::business_stamp_ui::BusinessDraft>,
 }
 
 /// The line a new dynamic custom stamp offers: what the built-in dynamic stamps write.
@@ -261,6 +265,7 @@ impl PdfCraftApp {
             data: d.data,
             line,
             seal: None,
+            business: None,
         });
         self.quick_tool = QuickTool::CustomStamp(self.custom_stamps.len() - 1);
     }

@@ -4737,3 +4737,20 @@ calendar weekday	We	水
 	No tables were found on the chosen pages	選んだページに表が見つかりませんでした
 	Exported {n} tables as {files} CSV files to {path}	{n} 個の表を {files} 個の CSV ファイルとして {path} に書き出しました
 	Save the tables as	表の保存先
+	Business stamps	ビジネス用スタンプ
+	Ready-made stamps such as 承認 or 至急. Click a word, then click on the page to place it.	承認や至急などの定型スタンプです。言葉をクリックしてから、ページをクリックして押します。
+	Rounded corners	角丸
+	Double rule	二重枠
+	Word:	文字:
+	Add the date of the day it is placed	押した日の日付を入れる
+	Use this stamp	このスタンプを使う
+	Type a word to see the stamp	文字を入力するとスタンプが表示されます
+	The stamp could not be drawn	スタンプを描画できませんでした
+	Stamp as a tally seal (契印)	契印として押す
+	Stamps this seal across the edge between each two pages, half on each page.	この印鑑をページとページの境目にまたがって押します。各ページに半分ずつ押されます。
+	First page:	最初のページ:
+	Last page:	最後のページ:
+	Next page on the right (横書き)	次のページが右 (横書き)
+	Next page on the left (縦書き)	次のページが左 (縦書き)
+	Stamp tally seal	契印を押す
+	A tally seal needs two or more pages: choose a later last page	契印には 2 ページ以上が必要です。最後のページをもっと後ろにしてください
