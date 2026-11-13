@@ -10491,3 +10491,15 @@ commands = ["edit.text"]
 tools = ["page_add_text", "content_update"]
 evidence = ["crates/ui-egui/tests/it/content.rs::vertical_text_is_typed_in_its_columns", "crates/edit/src/added/vertical_edit.rs::arrows_move_along_and_across_columns", "crates/edit/src/added/vertical_edit.rs::a_click_finds_the_caret_in_its_column", "crates/edit/src/added/vertical_edit.rs::the_typed_text_wraps_where_the_committed_text_does", "crates/edit/src/added/vertical_edit.rs::no_text_and_any_index_are_safe"]
 notes = "pdfcraft-JPN. While a vertical added-text box (vertical = true) is typed or retyped in place, the editor draws it in the columns the page will draw (right to left, upright Japanese, sideways Latin words, 縦中横), with a horizontal caret bar, selection along the columns and the IME candidate window at the caret. Up/Down move to the previous/next character, Left/Right to the next/previous column, Home/End to the column's ends (Ctrl/Cmd: the text's), Shift extends; clicks, drags and double clicks place the caret by the columns. Ruby markup stays as typed while editing; punctuation's vertical forms are approximated by turning or moving the interface glyphs. Headless use needs no new tool: page_add_text and content_update already take vertical."
+
+[[feature]]
+id = "form.japanese-input-format"
+title = "Japanese input formats for text fields (全角カナ, ひらがな, 半角数字, 半角英数, 全角)"
+area = "F"
+tier = "P2"
+milestone = "M6"
+status = "shipped"
+commands = ["form.field.properties"]
+tools = ["form_set_props", "form_fill"]
+evidence = ["crates/forms/src/af/japanese.rs::half_width_kana_with_sound_marks_joins_into_full_width_katakana", "crates/forms/src/tests.rs::a_japanese_input_format_converts_on_commit_and_is_read_back", "crates/engine/tests/it/japanese_input_format.rs::the_stored_script_converts_as_pdfcraft_does", "crates/automation/tests/it/japanese_input_format.rs::a_katakana_field_converts_half_width_kana_and_keeps_its_format_after_save"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. Format tab category Japanese input and form_set_props format {type: japanese, width}: what is typed or filled is converted on commit (half-width kana with voiced marks joined, hiragana/katakana, full-width digits and hyphens, full-width ASCII). Stored as a self-contained keystroke script calling PdfCraftJa_Keystroke, which viewers that run field JavaScript also run, and named in the field as /PdfCraftJaFormat."

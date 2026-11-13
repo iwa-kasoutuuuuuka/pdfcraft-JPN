@@ -1,7 +1,7 @@
 //! Form tools: list fields, fill them (several at once, one undo step), clear the form, and
 //! prepare a form (add fields one at a time or as a table, change and delete them).
 
-use pdfcraft_engine::form_scripts::{CalcOp, Calculate, Format, NOTATION_NOT_STORABLE, Validate, notation_storable};
+use pdfcraft_engine::form_scripts::{CalcOp, Calculate, Format, JaWidth, NOTATION_NOT_STORABLE, Validate, notation_storable};
 use pdfcraft_engine::{CalculationIssue, Edit, FieldProps, FieldValue, FormField, FormFieldKind, NewField, field_flags};
 use serde_json::{Value, json};
 
@@ -37,7 +37,12 @@ fn format_arg(v: &Value) -> Result<Format> {
         "phone" => Format::Special(2),
         "ssn" => Format::Special(3),
         "mask" => Format::Mask(s("mask").ok_or_else(|| bad("mask needs \"mask\""))?),
-        t => return Err(bad(format!("unknown format type {t:?} (none, number, percent, date, time, zip, zip4, phone, ssn, mask)"))),
+        "japanese" => {
+            let names = || JaWidth::ALL.map(JaWidth::name).join(", ");
+            let w = s("width").ok_or_else(|| bad(format!("japanese needs \"width\": one of {}", names())))?;
+            Format::Japanese(JaWidth::from_name(&w).ok_or_else(|| bad(format!("unknown japanese width {w:?} (one of {})", names())))?)
+        }
+        t => return Err(bad(format!("unknown format type {t:?} (none, number, percent, date, time, zip, zip4, phone, ssn, mask, japanese)"))),
     })
 }
 
@@ -193,6 +198,7 @@ fn format_json(f: &Format) -> Value {
             json!({ "type": t })
         }
         Format::Mask(m) => json!({ "type": "mask", "mask": m }),
+        Format::Japanese(w) => json!({ "type": "japanese", "width": w.name() }),
     }
 }
 

@@ -4716,3 +4716,10 @@ calendar weekday	We	水
 	Choose a text file	テキストファイルを選択
 	The results would replace the original files: add a suffix or choose another output folder	結果が元のファイルを置き換えてしまいます。接尾辞を付けるか、別の保存先フォルダーを選んでください
 	Could not start text recognition	テキスト認識を開始できませんでした
+	Japanese input	日本語の入力
+	Full-width katakana	全角カナ
+	Hiragana	ひらがな
+	Half-width digits	半角数字
+	Half-width letters and digits	半角英数
+	Full width	全角
+	What is typed is converted when the field is left.	フィールドから移ると、入力した文字が変換されます。

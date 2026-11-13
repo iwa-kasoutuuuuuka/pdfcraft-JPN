@@ -179,7 +179,23 @@ fn actions_of(doc: &Document, d: &Dict, widgets: &[ObjRef], scripts: &mut Decode
         xfa_date: matches!(d.get(b"PCXfaDate").map(|o| doc.resolve(o)).as_deref(), Some(Object::Bool(true))),
         ..af::Actions::default()
     };
-    let Some(aa) = aa else { return out };
+    // A Japanese input format names itself in the field too (`/PdfCraftJaFormat /katakana`): read
+    // from there only when the field has no format or keystroke script, as when another tool
+    // dropped them; a script another editor wrote since wins.
+    let named_ja = || match d.get(af::JA_FORMAT_KEY).map(|o| doc.resolve(o)).as_deref() {
+        Some(Object::Name(n)) => std::str::from_utf8(n).ok().and_then(af::JaWidth::from_name).map(af::Format::Japanese),
+        _ => None,
+    };
+    let Some(aa) = aa else {
+        out.format = named_ja().unwrap_or_default();
+        return out;
+    };
+    if aa.get(b"F").is_none()
+        && aa.get(b"K").is_none()
+        && let Some(fm) = named_ja()
+    {
+        out.format = fm;
+    }
     let mut js = |k: &[u8]| aa.get(k).and_then(|a| script(doc, a, scripts));
     if let Some(f) = js(b"F") {
         match af::parse_format(&f) {
@@ -194,9 +210,9 @@ fn actions_of(doc: &Document, d: &Dict, widgets: &[ObjRef], scripts: &mut Decode
     if let Some(k) = js(b"K")
         && out.format == af::Format::None
     {
-        // A mask has only a keystroke script.
+        // A mask and a Japanese input format have only a keystroke script.
         match af::parse_format(&k) {
-            Some(fm @ af::Format::Mask(_)) => out.format = fm,
+            Some(fm @ (af::Format::Mask(_) | af::Format::Japanese(_))) => out.format = fm,
             Some(_) => {}
             None if !k.trim().is_empty() => {
                 out.unsupported.push("keystroke");
