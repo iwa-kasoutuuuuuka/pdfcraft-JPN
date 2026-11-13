@@ -831,6 +831,8 @@ impl Automation {
             "page_add_seal" => self.page_add_seal(&a)?,
             "page_add_business_stamp" => self.page_add_business_stamp(&a)?,
             "page_add_tally_seal" => self.page_add_tally_seal(&a)?,
+            "dates_find_ja" => self.dates_find_ja(&a)?,
+            "dates_convert_ja" => self.dates_convert_ja(&a)?,
             "model_add" => self.model_add(&a)?,
             "comment_reply" => self.comment_reply(&a)?,
             "comment_set_status" => self.comment_set_status(&a)?,

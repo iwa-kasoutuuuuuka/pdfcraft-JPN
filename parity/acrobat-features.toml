@@ -10539,3 +10539,15 @@ commands = ["form.field.properties"]
 tools = ["form_set_props", "form_fill"]
 evidence = ["crates/forms/src/af/japanese.rs::half_width_kana_with_sound_marks_joins_into_full_width_katakana", "crates/forms/src/tests.rs::a_japanese_input_format_converts_on_commit_and_is_read_back", "crates/engine/tests/it/japanese_input_format.rs::the_stored_script_converts_as_pdfcraft_does", "crates/automation/tests/it/japanese_input_format.rs::a_katakana_field_converts_half_width_kana_and_keeps_its_format_after_save"]
 notes = "PdfCraft-JPN addition, not an Acrobat feature. Format tab category Japanese input and form_set_props format {type: japanese, width}: what is typed or filled is converted on commit (half-width kana with voiced marks joined, hiragana/katakana, full-width digits and hyphens, full-width ASCII). Stored as a self-contained keystroke script calling PdfCraftJa_Keystroke, which viewers that run field JavaScript also run, and named in the field as /PdfCraftJaFormat."
+
+[[feature]]
+id = "edit.convert-japanese-dates"
+title = "Find dates and convert them between the Japanese era and Western calendars (和暦/西暦の一括変換)"
+area = "C"
+tier = "P2"
+milestone = "M7"
+status = "shipped"
+commands = ["edit.convert_dates"]
+tools = ["dates_find_ja", "dates_convert_ja"]
+evidence = ["crates/engine/src/era_dates/tests.rs::era_boundaries_are_exact", "crates/engine/src/era_dates/tests.rs::phone_numbers_and_digit_runs_are_not_dates", "crates/engine/src/era_dates/tests.rs::full_width_digits_are_read_and_kept", "crates/automation/tests/it/era_dates.rs::dates_find_ja_lists_dates_in_page_text_comments_and_fields", "crates/automation/tests/it/era_dates.rs::dates_convert_ja_replaces_page_text_comments_and_fields_in_one_undo_step", "crates/ui-egui/tests/it/era_dates.rs::convert_dates_dialog_converts_the_checked_dates_to_the_chosen_calendar"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. Finds era dates (令和6年5月1日, 令和元年, R6.5.1, H31/4/30) and Western dates (2024年5月1日, 2024/5/1, 2024-05-01, 2024.5.1) in page text, comment text and text field values, full-width digits included; phone numbers and digit runs are not dates. Era days are exact (平成31年5月1日 is flagged, never converted). Converts in kanji style with 元年 as one undo step. Page text goes through the Edit text line rewrite, tried on a copy first; a line the rewrite refuses or that would not read back is reported and left unchanged. Fields with a date or number format script are left alone."

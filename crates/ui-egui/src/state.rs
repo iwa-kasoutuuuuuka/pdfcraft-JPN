@@ -105,6 +105,8 @@ pub enum Dialog {
     CreateImages,
     /// Create ▸ Vertical Japanese document (縦書き文書).
     CreateVertical,
+    /// Edit ▸ Convert dates (和暦/西暦の一括変換).
+    ConvertDates,
     Properties(PropsTab),
     About,
     Shortcuts,

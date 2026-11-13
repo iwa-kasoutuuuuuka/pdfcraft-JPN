@@ -20,6 +20,7 @@ mod bates;
 mod comments;
 mod content;
 mod conventions;
+mod era_dates;
 pub mod file_access;
 mod forms;
 mod hairlines;

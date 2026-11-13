@@ -41,6 +41,7 @@ mod dialog_chrome;
 mod document_links;
 mod editing;
 mod editor_taps;
+mod era_dates;
 mod export;
 mod fill_sign;
 mod folders;
