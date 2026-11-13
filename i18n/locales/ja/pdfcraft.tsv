@@ -4716,3 +4716,6 @@ calendar weekday	We	水
 	Choose a text file	テキストファイルを選択
 	The results would replace the original files: add a suffix or choose another output folder	結果が元のファイルを置き換えてしまいます。接尾辞を付けるか、別の保存先フォルダーを選んでください
 	Could not start text recognition	テキスト認識を開始できませんでした
+	Characters without punctuation	句読点・記号を除く文字数
+	Manuscript paper (400 characters)	400字詰め原稿用紙
+	{sheets} sheet(s), last one {lines} line(s)	{sheets}枚(最後の1枚は{lines}行)

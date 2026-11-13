@@ -104,6 +104,7 @@ pub use pdfcraft_edit::{
     Added, AddedImage, AddedText, Align as TextAlign, Background, ColourTarget, ColoursConverted, Content as AddedContent, ConvertColours,
     Family as FontFamily, Hairlines, HairlinesFixed, HeaderFooter, Ink as TextInk, MarkKind, PrinterMarks, Watermark,
 };
+pub use pdfcraft_edit::{Context as MarkContext, expand as expand_mark_tokens, kanji_number};
 pub use pdfcraft_edit::{VerticalOptions, VerticalPageSize, VerticalTemplate, vertical_grid_colour};
 pub use pdfcraft_forms::{
     BorderStyle, CalculatedField, CalculationIssue, CalculationOrder, CheckStyle, Field as FormField, FieldAction, FieldChange, FieldFont,

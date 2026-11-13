@@ -22,8 +22,8 @@ milestone = "M2"
 status = "shipped"
 commands = ["file.word_count"]
 tools = ["text_word_count"]
-evidence = ["crates/engine/src/word_count.rs::word_count_filters_are_independent_and_do_not_change_normal_extraction", "crates/automation/tests/it/automation.rs::word_count_reads_selected_pages_and_unsaved_edits_without_mutating", "crates/ui-egui/src/dialogs/word_count_ui.rs::word_count_dialog_counts_changes_pages_and_closes"]
-notes = "Unicode words and characters for the current snapshot; all or current page in GUI, selected pages headlessly. Desktop background work with cancellation. Optional semantic table/code/Figure and invisible-text exclusions; no OCR or visual layout classification. Unsupported structure remains counted and is reported. Mixed ActualText exclusions fail explicitly. See docs/word-count.md."
+evidence = ["crates/engine/src/word_count.rs::word_count_filters_are_independent_and_do_not_change_normal_extraction", "crates/automation/tests/it/automation.rs::word_count_reads_selected_pages_and_unsaved_edits_without_mutating", "crates/ui-egui/src/dialogs/word_count_ui.rs::word_count_dialog_counts_changes_pages_and_closes", "crates/engine/src/word_count.rs::manuscript_sheets_are_400_squares_with_a_count_of_lines_on_the_last", "crates/engine/src/word_count.rs::manuscript_punctuation_that_would_start_a_line_hangs", "crates/engine/src/word_count.rs::japanese_counts_leave_out_whitespace_and_punctuation", "crates/automation/tests/it/japanese_counts.rs::word_count_reports_japanese_characters_and_manuscript_sheets", "crates/ui-egui/src/dialogs/word_count_ui.rs::word_count_dialog_shows_japanese_counts_and_manuscript_sheets"]
+notes = "pdfcraft-JPN: also characters without punctuation and symbols, and the 400字詰め原稿用紙 estimate (20 squares a line, 20 lines a sheet; each paragraph and page starts a line, no indentation added, 行頭禁則 marks hang, 追い出し as in the 原稿用紙 generator), as sheets plus lines on the last. Unicode words and characters for the current snapshot; all or current page in GUI, selected pages headlessly. Desktop background work with cancellation. Optional semantic table/code/Figure and invisible-text exclusions; no OCR or visual layout classification. Unsupported structure remains counted and is reported. Mixed ActualText exclusions fail explicitly. See docs/word-count.md."
 
 [[feature]]
 id = "core.open-pdf"
@@ -2490,8 +2490,8 @@ milestone = "M7"
 status = "shipped"
 commands = ["edit.header_footer"]
 tools = ["doc_header_footer"]
-evidence = ["crates/edit/src/tests.rs::tokens_expand", "crates/engine/src/tests.rs::headers_footers_watermarks_and_backgrounds_show_update_and_remove"]
-notes = "<<1>>, <<n>>, <<1 of n>>, <<Page 1 of n>>, dates (US, ISO, day-first with slashes and the dotted <<dd.mm.yyyy>>, <<d.m.yyyy>>, <<dd.mm.yy>>, <<d.m.yy>>), Bates. Month names are English only"
+evidence = ["crates/edit/src/tests.rs::tokens_expand", "crates/engine/src/tests.rs::headers_footers_watermarks_and_backgrounds_show_update_and_remove", "crates/edit/src/marks.rs::kanji_numerals_are_written_as_japanese_writes_numbers", "crates/edit/src/marks.rs::japanese_page_number_tokens", "crates/automation/tests/it/japanese_counts.rs::header_and_footer_draw_japanese_page_numbers", "crates/ui-egui/src/dialogs/marks_ui.rs::every_page_number_format_is_a_token_the_engine_expands"]
+notes = "<<1>>, <<n>>, <<1 of n>>, <<Page 1 of n>>, pdfcraft-JPN Japanese page numbers <<- 1 ->>, <<1 / n>>, <<1ページ>>, <<第1頁>>, <<一>> (kanji numerals) and <<第一頁>> (kana and kanji refused, saying why, without a Japanese face), dates (US, ISO, day-first with slashes and the dotted <<dd.mm.yyyy>>, <<d.m.yyyy>>, <<dd.mm.yy>>, <<d.m.yy>>), Bates. Month names are English only"
 
 [[feature]]
 id = "edit.header-footer-ranges"
