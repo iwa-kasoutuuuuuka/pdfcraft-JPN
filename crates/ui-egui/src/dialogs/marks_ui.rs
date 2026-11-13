@@ -241,7 +241,20 @@ impl Default for MarksDraft {
     }
 }
 
-const PAGE_FORMATS: [&str; 5] = ["<<1>>", "<<1 of n>>", "<<1/n>>", "<<Page 1>>", "<<Page 1 of n>>"];
+const PAGE_FORMATS: [&str; 11] = [
+    "<<1>>",
+    "<<1 of n>>",
+    "<<1/n>>",
+    "<<Page 1>>",
+    "<<Page 1 of n>>",
+    // pdfcraft-JPN: Japanese page numbers: - 1 -, 1 / 10, 1ページ, 第1頁, 百五 (kanji), 第百五頁.
+    "<<- 1 ->>",
+    "<<1 / n>>",
+    "<<1ページ>>",
+    "<<第1頁>>",
+    "<<一>>",
+    "<<第一頁>>",
+];
 // New formats go last: `date_format` is an index into this list.
 const DATE_FORMATS: [&str; 13] = [
     "<<m/d/yyyy>>",
@@ -939,6 +952,16 @@ mod tests {
         d.use_file = true;
         assert_eq!(undrawable(MarkKind::Watermark, &d), None, "a picture watermark draws no text");
         assert_eq!(undrawable(MarkKind::Background, &d), None);
+    }
+
+    #[test]
+    fn every_page_number_format_is_a_token_the_engine_expands() {
+        let cx = pdfcraft_engine::MarkContext::default();
+        for f in PAGE_FORMATS {
+            let shown = pdfcraft_engine::expand_mark_tokens(f, 105, 120, 1, &cx);
+            assert!(!shown.contains("<<") && shown.contains(['1', '百']), "{f} -> {shown}");
+        }
+        assert!(PAGE_FORMATS.contains(&"<<第一頁>>") && PAGE_FORMATS.contains(&"<<1ページ>>"));
     }
 
     #[test]

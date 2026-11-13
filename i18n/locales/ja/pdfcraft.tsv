@@ -4723,3 +4723,6 @@ calendar weekday	We	水
 	Half-width letters and digits	半角英数
 	Full width	全角
 	What is typed is converted when the field is left.	フィールドから移ると、入力した文字が変換されます。
+	Characters without punctuation	句読点・記号を除く文字数
+	Manuscript paper (400 characters)	400字詰め原稿用紙
+	{sheets} sheet(s), last one {lines} line(s)	{sheets}枚(最後の1枚は{lines}行)

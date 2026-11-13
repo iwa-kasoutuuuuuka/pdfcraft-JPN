@@ -13,6 +13,7 @@ mod find_text;
 mod form_bulk;
 mod hostile_args;
 mod japanese_input_format;
+mod japanese_counts;
 mod japanese_text;
 mod list_selection;
 mod model_3d;

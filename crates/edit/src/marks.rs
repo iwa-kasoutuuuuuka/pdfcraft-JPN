@@ -97,7 +97,9 @@ impl MarkKind {
 pub struct HeaderFooter {
     /// Left, centre and right header text, then left, centre and right footer text. Tokens:
     /// `<<1>>` page number, `<<n>>` page count, `<<1 of n>>`, `<<1/n>>`, `<<Page 1>>`,
-    /// `<<Page 1 of n>>`, dates `<<m/d/yyyy>>`, `<<mm/dd/yyyy>>`, `<<d/m/yyyy>>`, `<<yyyy-mm-dd>>`,
+    /// `<<Page 1 of n>>`, the Japanese page numbers `<<- 1 ->>` (- 1 -), `<<1 / n>>` (1 / 10),
+    /// `<<1ページ>>`, `<<第1頁>>`, `<<一>>` (kanji numerals: 百五) and `<<第一頁>>`, dates
+    /// `<<m/d/yyyy>>`, `<<mm/dd/yyyy>>`, `<<d/m/yyyy>>`, `<<yyyy-mm-dd>>`,
     /// `<<yyyy/mm/dd>>`, `<<yyyy/m/d>>`, `<<m/d/yy>>`, `<<mmmm d, yyyy>>`, the dotted day-first
     /// dates of German-speaking and much of Central and Eastern Europe `<<dd.mm.yyyy>>`,
     /// `<<d.m.yyyy>>`, `<<dd.mm.yy>>`, `<<d.m.yy>>`, Japanese era dates `<<ggEE年m月d日>>`
@@ -138,7 +140,8 @@ impl Default for HeaderFooter {
 impl HeaderFooter {
     /// The first character [`add_header_footer`] would refuse, because neither the standard
     /// fonts nor (for Thai) the Thai face can draw it (#125). Tokens only add ASCII (Bates
-    /// prefixes and suffixes are part of the template), so checking the templates, split as
+    /// prefixes and suffixes are part of the template), or Japanese the token itself is written
+    /// in (`<<第一頁>>`, `<<ggEE年m月d日>>`), so checking the templates, split as
     /// `expand`'s output is, covers every page (and a `\r` that would be drawn is refused too).
     /// The dialog asks this too, so its preview never offers text that applying refuses (#2013).
     pub fn first_undrawable(&self) -> Option<char> {
@@ -340,6 +343,14 @@ pub fn expand(template: &str, page_number: u32, count: usize, bates: u64, cx: &C
             "1/n" => format!("{p}/{count}"),
             "Page 1" => format!("Page {p}"),
             "Page 1 of n" => format!("Page {p} of {count}"),
+            // pdfcraft-JPN: Japanese page numbers. The kanji forms need the Japanese face, which
+            // the token's own characters already ask for (`first_undrawable`, `thai_refusal`).
+            "- 1 -" => format!("- {p} -"),
+            "1 / n" => format!("{p} / {count}"),
+            "1ページ" => format!("{p}ページ"),
+            "第1頁" => format!("第{p}頁"),
+            "一" => kanji_number(u64::from(p)),
+            "第一頁" => format!("第{}頁", kanji_number(u64::from(p))),
             "m/d" => format!("{m}/{d}"),
             "m/d/yy" => format!("{m}/{d}/{:02}", y.rem_euclid(100)),
             "m/d/yyyy" => format!("{m}/{d}/{y}"),
@@ -379,6 +390,51 @@ pub fn expand(template: &str, page_number: u32, count: usize, bates: u64, cx: &C
     out
 }
 
+/// `n` in kanji numerals as Japanese writes numbers out (漢数字): 一 … 九, 十, 十一, 二十, 百,
+/// 百五, 千, 二千二十六, 一万, 一億. 十, 百 and 千 stand alone for one of them (百, not 一百); 万
+/// and the larger units always take their count (一万). Zero is 〇.
+pub fn kanji_number(n: u64) -> String {
+    const DIGITS: [char; 10] = ['〇', '一', '二', '三', '四', '五', '六', '七', '八', '九'];
+    const SMALL: [(u64, char); 3] = [(1000, '千'), (100, '百'), (10, '十')];
+    const LARGE: [&str; 5] = ["京", "兆", "億", "万", ""];
+    if n == 0 {
+        return "〇".into();
+    }
+    let digit = |d: u64| DIGITS.get(usize::try_from(d).unwrap_or(0)).copied().unwrap_or('〇');
+    // One group of four digits (1–9999).
+    let group = |mut g: u64| {
+        let mut out = String::new();
+        for (unit, name) in SMALL {
+            let d = g / unit;
+            if d > 0 {
+                if d > 1 {
+                    out.push(digit(d));
+                }
+                out.push(name);
+            }
+            g %= unit;
+        }
+        if g > 0 {
+            out.push(digit(g));
+        }
+        out
+    };
+    let mut out = String::new();
+    let mut rest = n;
+    // u64 stops at 1844京…, so every group, 京 included, is at most 9999.
+    let mut scale = 10_000u64.pow(4);
+    for name in LARGE {
+        let g = rest / scale;
+        rest %= scale;
+        if g > 0 {
+            out.push_str(&group(g));
+            out.push_str(name);
+        }
+        scale /= 10_000;
+    }
+    out
+}
+
 /// The Bates start number in a template (`<<Bates Number#digits#start#…>>`), if any.
 pub(crate) fn bates_start(template: &str) -> Option<u64> {
     let i = template.find("<<Bates Number")?;
@@ -399,6 +455,47 @@ mod expand_tests {
         assert_eq!(expand("<<ggEE年m月d日>>", 1, 1, 1, &cx), "令和元年5月1日");
         let cx = Context { date: (1700, 5, 1) };
         assert_eq!(expand("<<ggEE年m月d日>>", 1, 1, 1, &cx), "1700年5月1日");
+    }
+
+    #[test]
+    fn kanji_numerals_are_written_as_japanese_writes_numbers() {
+        for (n, kanji) in [
+            (0, "〇"),
+            (1, "一"),
+            (9, "九"),
+            (10, "十"),
+            (11, "十一"),
+            (19, "十九"),
+            (20, "二十"),
+            (21, "二十一"),
+            (99, "九十九"),
+            (100, "百"),
+            (101, "百一"),
+            (105, "百五"),
+            (110, "百十"),
+            (999, "九百九十九"),
+            (1000, "千"),
+            (1001, "千一"),
+            (2026, "二千二十六"),
+            (3456, "三千四百五十六"),
+            (10_000, "一万"),
+            (10_010, "一万十"),
+            (123_456, "十二万三千四百五十六"),
+            (100_000_000, "一億"),
+            (4_294_967_295, "四十二億九千四百九十六万七千二百九十五"),
+            (u64::MAX, "千八百四十四京六千七百四十四兆七百三十七億九百五十五万千六百十五"),
+        ] {
+            assert_eq!(kanji_number(n), kanji, "{n}");
+        }
+    }
+
+    #[test]
+    fn japanese_page_number_tokens() {
+        let cx = Context::default();
+        let t = "<<- 1 ->>|<<1 / n>>|<<1ページ>>|<<第1頁>>|<<一>>|<<第一頁>>";
+        assert_eq!(expand(t, 1, 10, 1, &cx), "- 1 -|1 / 10|1ページ|第1頁|一|第一頁");
+        assert_eq!(expand(t, 105, 120, 1, &cx), "- 105 -|105 / 120|105ページ|第105頁|百五|第百五頁");
+        assert_eq!(expand("<<第一頁>>", 2026, 3000, 1, &cx), "第二千二十六頁");
     }
 
     #[test]

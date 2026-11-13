@@ -130,12 +130,16 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp) -> bool {
                     (tl!("Words"), report.total.words),
                     (tl!("Characters"), report.total.characters),
                     (tl!("Characters without spaces"), report.total.characters_without_spaces),
+                    (tl!("Characters without punctuation"), report.total.characters_without_punctuation),
                     (tl!("Pages counted"), report.pages.len()),
                 ] {
                     ui.label(label);
                     ui.strong(value.to_string());
                     ui.end_row();
                 }
+                ui.label(tl!("Manuscript paper (400 characters)"));
+                ui.strong(manuscript_text(&report.total));
+                ui.end_row();
             });
             if report.pages_without_text > 0 {
                 ui.label(tl!("Some pages contain no countable text. Scanned images need OCR first."));
@@ -154,6 +158,12 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp) -> bool {
         }
     }
     false
+}
+
+/// pdfcraft-JPN: the 400字詰め原稿用紙 the text fills, as sheets and the lines on the last one.
+fn manuscript_text(counts: &word_count::Counts) -> String {
+    let (sheets, lines) = counts.manuscript_sheets();
+    crate::i18n::fmt(tl!("{sheets} sheet(s), last one {lines} line(s)"), &[("sheets", &sheets.to_string()), ("lines", &lines.to_string())])
 }
 
 #[cfg(test)]
@@ -199,6 +209,27 @@ mod tests {
             assert!(h.state().dialog.is_none());
             assert!(h.state().word_count_draft.result.is_none());
         }
+    }
+
+    #[test]
+    fn word_count_dialog_shows_japanese_counts_and_manuscript_sheets() {
+        let bytes = pdfcraft_engine::Session::new().create_from_text("Words", "Hello, world!\u{c}Another three words").unwrap();
+        let mut h = Harness::builder().with_size(egui::vec2(1200.0, 900.0)).build_eframe(|_| {
+            let mut app = PdfCraftApp::new();
+            app.run_inline = true;
+            app.set_option("language", "en").unwrap();
+            app.open_bytes("words.pdf", None, bytes.as_ref().clone()).unwrap();
+            app.run_command("file.word_count");
+            app
+        });
+        h.run_steps(3);
+        let report = h.state().word_count_draft.result.clone().unwrap().unwrap();
+        assert_eq!(report.total.characters_without_punctuation, report.total.characters_without_spaces - 2, "the comma and the bang");
+        // One line on each page.
+        assert_eq!(report.total.manuscript_lines, 2);
+        h.get_by_label("Characters without punctuation");
+        h.get_by_label("Manuscript paper (400 characters)");
+        h.get_by_label("1 sheet(s), last one 2 line(s)");
     }
 
     #[test]
