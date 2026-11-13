@@ -22,8 +22,8 @@ milestone = "M2"
 status = "shipped"
 commands = ["file.word_count"]
 tools = ["text_word_count"]
-evidence = ["crates/engine/src/word_count.rs::word_count_filters_are_independent_and_do_not_change_normal_extraction", "crates/automation/tests/it/automation.rs::word_count_reads_selected_pages_and_unsaved_edits_without_mutating", "crates/ui-egui/src/dialogs/word_count_ui.rs::word_count_dialog_counts_changes_pages_and_closes"]
-notes = "Unicode words and characters for the current snapshot; all or current page in GUI, selected pages headlessly. Desktop background work with cancellation. Optional semantic table/code/Figure and invisible-text exclusions; no OCR or visual layout classification. Unsupported structure remains counted and is reported. Mixed ActualText exclusions fail explicitly. See docs/word-count.md."
+evidence = ["crates/engine/src/word_count.rs::word_count_filters_are_independent_and_do_not_change_normal_extraction", "crates/automation/tests/it/automation.rs::word_count_reads_selected_pages_and_unsaved_edits_without_mutating", "crates/ui-egui/src/dialogs/word_count_ui.rs::word_count_dialog_counts_changes_pages_and_closes", "crates/engine/src/word_count.rs::manuscript_sheets_are_400_squares_with_a_count_of_lines_on_the_last", "crates/engine/src/word_count.rs::manuscript_punctuation_that_would_start_a_line_hangs", "crates/engine/src/word_count.rs::japanese_counts_leave_out_whitespace_and_punctuation", "crates/automation/tests/it/japanese_counts.rs::word_count_reports_japanese_characters_and_manuscript_sheets", "crates/ui-egui/src/dialogs/word_count_ui.rs::word_count_dialog_shows_japanese_counts_and_manuscript_sheets"]
+notes = "pdfcraft-JPN: also characters without punctuation and symbols, and the 400字詰め原稿用紙 estimate (20 squares a line, 20 lines a sheet; each paragraph and page starts a line, no indentation added, 行頭禁則 marks hang, 追い出し as in the 原稿用紙 generator), as sheets plus lines on the last. Unicode words and characters for the current snapshot; all or current page in GUI, selected pages headlessly. Desktop background work with cancellation. Optional semantic table/code/Figure and invisible-text exclusions; no OCR or visual layout classification. Unsupported structure remains counted and is reported. Mixed ActualText exclusions fail explicitly. See docs/word-count.md."
 
 [[feature]]
 id = "core.open-pdf"
@@ -2490,8 +2490,8 @@ milestone = "M7"
 status = "shipped"
 commands = ["edit.header_footer"]
 tools = ["doc_header_footer"]
-evidence = ["crates/edit/src/tests.rs::tokens_expand", "crates/engine/src/tests.rs::headers_footers_watermarks_and_backgrounds_show_update_and_remove"]
-notes = "<<1>>, <<n>>, <<1 of n>>, <<Page 1 of n>>, dates (US, ISO, day-first with slashes and the dotted <<dd.mm.yyyy>>, <<d.m.yyyy>>, <<dd.mm.yy>>, <<d.m.yy>>), Bates. Month names are English only"
+evidence = ["crates/edit/src/tests.rs::tokens_expand", "crates/engine/src/tests.rs::headers_footers_watermarks_and_backgrounds_show_update_and_remove", "crates/edit/src/marks.rs::kanji_numerals_are_written_as_japanese_writes_numbers", "crates/edit/src/marks.rs::japanese_page_number_tokens", "crates/automation/tests/it/japanese_counts.rs::header_and_footer_draw_japanese_page_numbers", "crates/ui-egui/src/dialogs/marks_ui.rs::every_page_number_format_is_a_token_the_engine_expands"]
+notes = "<<1>>, <<n>>, <<1 of n>>, <<Page 1 of n>>, pdfcraft-JPN Japanese page numbers <<- 1 ->>, <<1 / n>>, <<1ページ>>, <<第1頁>>, <<一>> (kanji numerals) and <<第一頁>> (kana and kanji refused, saying why, without a Japanese face), dates (US, ISO, day-first with slashes and the dotted <<dd.mm.yyyy>>, <<d.m.yyyy>>, <<dd.mm.yy>>, <<d.m.yy>>), Bates. Month names are English only"
 
 [[feature]]
 id = "edit.header-footer-ranges"
@@ -4288,6 +4288,30 @@ commands = []
 tools = ["page_add_seal"]
 evidence = ["crates/engine/src/seal/tests.rs::a_name_is_set_vertically_and_fits_inside_the_circle", "crates/engine/src/seal/tests.rs::a_date_seal_has_three_bands_in_order", "crates/engine/src/seal/tests.rs::a_placed_seal_is_a_stamp_with_an_appearance_and_its_text", "crates/automation/tests/it/seal.rs::a_name_seal_is_a_stamp_comment_with_the_name_as_text", "crates/automation/tests/it/seal.rs::a_date_seal_has_the_organisation_date_and_name"]
 notes = "pdfcraft-JPN. Not an Acrobat feature: the Japanese 認印/名前印 (the name set vertically in a red circle or 角印 square) and データ印 (organisation, date and name in three bands). Placed as a vector Stamp comment (a custom stamp whose appearance is a generated one-page PDF), so it moves, resizes and deletes like any stamp; the Edit tab's stamp palette has a Seal section (name, kind, shape, department, date or era date, colour, size, preview). Text is the Gothic face from craft-fonts; a build without a Japanese face refuses Japanese text with a message saying so"
+
+[[feature]]
+id = "comment.stamps-business-ja"
+title = "Japanese business stamps (ビジネス用スタンプ: 承認, 至急, 社外秘...)"
+area = "E"
+tier = "P2"
+milestone = "M5"
+status = "shipped"
+commands = []
+tools = ["page_add_business_stamp"]
+evidence = ["crates/engine/src/seal/business/tests.rs::every_preset_fits_inside_its_frame", "crates/engine/src/seal/business/tests.rs::a_date_and_a_name_go_under_the_word_with_a_rule", "crates/engine/src/seal/business/tests.rs::a_placed_business_stamp_is_a_stamp_comment", "crates/automation/tests/it/seal.rs::a_business_stamp_is_a_stamp_comment_with_its_words"]
+notes = "pdfcraft-JPN. Not an Acrobat feature: ready-made Japanese office stamps (承認, 確認済, 至急, 社外秘, 回覧, 複製厳禁, 済, 重要, 控, or any word of up to 6 characters) in our own design, a rounded outline or a double rule, with an optional date line (Western or era) and name line, vermilion by default. Placed as a vector Stamp comment like the seals; the stamp palette has a Business stamps section under the Seal section"
+
+[[feature]]
+id = "comment.stamps-tally-seal"
+title = "Tally seal across pages (契印)"
+area = "E"
+tier = "P2"
+milestone = "M5"
+status = "shipped"
+commands = []
+tools = ["page_add_tally_seal"]
+evidence = ["crates/engine/src/seal/tally/tests.rs::the_halves_meet_at_the_shared_edge_at_the_same_height", "crates/engine/src/seal/tally/tests.rs::each_half_pdf_is_cropped_to_its_half", "crates/engine/src/seal/tally/tests.rs::a_tally_seal_across_a_range_is_one_undo_step", "crates/automation/tests/it/seal.rs::a_tally_seal_puts_half_a_seal_on_each_side_of_every_page_edge"]
+notes = "pdfcraft-JPN. Not an Acrobat feature: a name seal split over the edge between every two consecutive pages of a range, each page carrying a Stamp comment cut (by its picture's crop box) to exactly half the seal, touching the shared edge at the same height; left-to-right (横書き) or mirrored right-to-left (縦書き) documents. One undo step. 割印 across two separate documents is not done. The Seal section of the stamp palette has a 契印 control (page range, height, direction)"
 
 [[feature]]
 id = "comment.stamps-sign-here"
@@ -7045,6 +7069,18 @@ commands = ["ocr.export_text"]
 tools = ["export_text"]
 evidence = ["crates/automation/tests/it/ocr_text_folder.rs::export_text_writes_txt_and_docx_in_reading_order_with_japanese_tags", "crates/engine/src/text_export.rs::scanned_pages_are_read_on_a_copy_when_asked_and_the_document_is_left_alone"]
 notes = "Scan & OCR > Export recognized text. Reading order with vertical columns right to left, one paragraph per block of lines. Word output tags the text as Japanese (w:lang eastAsia ja-JP, East Asian font slot) and writes vertical pages as tbRl sections (vertical auto/on/off). Optionally reads pages without a text layer first on a scratch copy (language ja, engine auto). Plain text separates pages with a numbered line or form feeds."
+
+[[feature]]
+id = "ocr.export-tables-csv"
+title = "Export tables to CSV (from page text, OCR text included), Excel-ready for Japanese"
+area = "I"
+tier = "P2"
+milestone = "M10"
+status = "shipped"
+commands = ["ocr.export_tables_csv"]
+tools = ["export_tables_csv"]
+evidence = ["crates/automation/tests/it/table_csv.rs::export_tables_csv_writes_excel_ready_csv_per_table_or_in_one_file", "crates/engine/src/table_csv/tests.rs::ruled_lines_decide_the_cells_and_layouts_split_or_join_the_files"]
+notes = "Scan & OCR > Export tables to CSV. Tables found from positioned text: drawn grids (rules that meet) decide their cells, otherwise rows by vertical overlap and columns from whitespace gutters shared by the rows; cells split by geometry, never spaces, Japanese joined without spaces. UTF-8 with BOM, CRLF, RFC 4180 quoting, formula-looking fields defused. One CSV per table or all in one file; optional OCR first on a scratch copy. Horizontal text only; spanning cells in unruled tables may shift columns."
 
 [[feature]]
 id = "ocr.folder-batch"
@@ -10491,3 +10527,27 @@ commands = ["edit.text"]
 tools = ["page_add_text", "content_update"]
 evidence = ["crates/ui-egui/tests/it/content.rs::vertical_text_is_typed_in_its_columns", "crates/edit/src/added/vertical_edit.rs::arrows_move_along_and_across_columns", "crates/edit/src/added/vertical_edit.rs::a_click_finds_the_caret_in_its_column", "crates/edit/src/added/vertical_edit.rs::the_typed_text_wraps_where_the_committed_text_does", "crates/edit/src/added/vertical_edit.rs::no_text_and_any_index_are_safe"]
 notes = "pdfcraft-JPN. While a vertical added-text box (vertical = true) is typed or retyped in place, the editor draws it in the columns the page will draw (right to left, upright Japanese, sideways Latin words, 縦中横), with a horizontal caret bar, selection along the columns and the IME candidate window at the caret. Up/Down move to the previous/next character, Left/Right to the next/previous column, Home/End to the column's ends (Ctrl/Cmd: the text's), Shift extends; clicks, drags and double clicks place the caret by the columns. Ruby markup stays as typed while editing; punctuation's vertical forms are approximated by turning or moving the interface glyphs. Headless use needs no new tool: page_add_text and content_update already take vertical."
+
+[[feature]]
+id = "form.japanese-input-format"
+title = "Japanese input formats for text fields (全角カナ, ひらがな, 半角数字, 半角英数, 全角)"
+area = "F"
+tier = "P2"
+milestone = "M6"
+status = "shipped"
+commands = ["form.field.properties"]
+tools = ["form_set_props", "form_fill"]
+evidence = ["crates/forms/src/af/japanese.rs::half_width_kana_with_sound_marks_joins_into_full_width_katakana", "crates/forms/src/tests.rs::a_japanese_input_format_converts_on_commit_and_is_read_back", "crates/engine/tests/it/japanese_input_format.rs::the_stored_script_converts_as_pdfcraft_does", "crates/automation/tests/it/japanese_input_format.rs::a_katakana_field_converts_half_width_kana_and_keeps_its_format_after_save"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. Format tab category Japanese input and form_set_props format {type: japanese, width}: what is typed or filled is converted on commit (half-width kana with voiced marks joined, hiragana/katakana, full-width digits and hyphens, full-width ASCII). Stored as a self-contained keystroke script calling PdfCraftJa_Keystroke, which viewers that run field JavaScript also run, and named in the field as /PdfCraftJaFormat."
+
+[[feature]]
+id = "edit.convert-japanese-dates"
+title = "Find dates and convert them between the Japanese era and Western calendars (和暦/西暦の一括変換)"
+area = "C"
+tier = "P2"
+milestone = "M7"
+status = "shipped"
+commands = ["edit.convert_dates"]
+tools = ["dates_find_ja", "dates_convert_ja"]
+evidence = ["crates/engine/src/era_dates/tests.rs::era_boundaries_are_exact", "crates/engine/src/era_dates/tests.rs::phone_numbers_and_digit_runs_are_not_dates", "crates/engine/src/era_dates/tests.rs::full_width_digits_are_read_and_kept", "crates/automation/tests/it/era_dates.rs::dates_find_ja_lists_dates_in_page_text_comments_and_fields", "crates/automation/tests/it/era_dates.rs::dates_convert_ja_replaces_page_text_comments_and_fields_in_one_undo_step", "crates/ui-egui/tests/it/era_dates.rs::convert_dates_dialog_converts_the_checked_dates_to_the_chosen_calendar"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. Finds era dates (令和6年5月1日, 令和元年, R6.5.1, H31/4/30) and Western dates (2024年5月1日, 2024/5/1, 2024-05-01, 2024.5.1) in page text, comment text and text field values, full-width digits included; phone numbers and digit runs are not dates. Era days are exact (平成31年5月1日 is flagged, never converted). Converts in kanji style with 元年 as one undo step. Page text goes through the Edit text line rewrite, tried on a copy first; a line the rewrite refuses or that would not read back is reported and left unchanged. Fields with a date or number format script are left alone."

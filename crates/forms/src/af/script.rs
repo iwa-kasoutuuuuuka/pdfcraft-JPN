@@ -273,6 +273,9 @@ pub fn parse_format(js: &str) -> Option<Format> {
     if let Some(args) = call(js, "AFSpecial_KeystrokeEx") {
         return Some(Format::Mask(args.first().and_then(Arg::string)?));
     }
+    if let Some(args) = call(js, super::JA_KEYSTROKE) {
+        return Some(Format::Japanese(super::JaWidth::from_name(&args.first().and_then(Arg::string)?)?));
+    }
     None
 }
 
@@ -348,6 +351,7 @@ pub fn format_js(f: &Format) -> Option<(String, String)> {
         Format::Time(f) => (format!("AFTime_FormatEx({});", js_str(f)), format!("AFTime_KeystrokeEx({});", js_str(f))),
         Format::Special(n) => (format!("AFSpecial_Format({n});"), format!("AFSpecial_Keystroke({n});")),
         Format::Mask(m) => (String::new(), format!("AFSpecial_KeystrokeEx({});", js_str(m))),
+        Format::Japanese(w) => (String::new(), super::japanese_keystroke_js(*w)),
     })
 }
 

@@ -119,6 +119,7 @@ pub use dialogs::bookmark_styles_ui;
 use dialogs::comment_props;
 use dialogs::convert_colours_ui;
 use dialogs::credits;
+use dialogs::era_dates_ui;
 use dialogs::hairlines_ui;
 use dialogs::marks_ui;
 use dialogs::pageboxes;
@@ -172,6 +173,7 @@ pub use state::{
 };
 use state::{DocumentCopyJob, GridFile};
 pub use tools::bulk_fields;
+use tools::business_stamp_ui;
 use tools::calc_order_ui;
 use tools::camera_ui;
 pub use tools::comments;
@@ -211,6 +213,7 @@ use workflows::ocr_web;
 use workflows::optimize_ui;
 use workflows::print_ui;
 use workflows::scan_clean_ui;
+use workflows::table_csv_ui;
 use workflows::vertical_ui;
 use workflows::web_print;
 
@@ -604,6 +607,8 @@ pub struct PdfCraftApp {
     pub ocr_run: Option<ocr_ui::OcrRun>,
     /// Scan & OCR: Export recognized text: the dialog's choices.
     pub ocr_export_draft: ocr_export_ui::OcrExportDraft,
+    /// Scan & OCR: Export tables to CSV: the dialog's choices.
+    pub table_csv_draft: table_csv_ui::TableCsvDraft,
     /// Scan & OCR: OCR a folder: the dialog's choices, the running job and the last summary.
     pub ocr_folder: ocr_folder_ui::OcrFolderState,
     pub ocr_batch: Option<std::sync::Arc<std::sync::Mutex<ocr_ui::BatchProgress>>>,
@@ -684,6 +689,9 @@ pub struct PdfCraftApp {
     /// The electronic seal being made in the stamps palette, and its preview.
     pub seal_draft: seal_ui::SealDraft,
     pub(crate) seal_preview: seal_ui::SealPreview,
+    /// The business stamp (ビジネス用スタンプ) being made in the stamps palette, and its preview.
+    pub business_draft: business_stamp_ui::BusinessDraft,
+    pub(crate) business_preview: business_stamp_ui::BusinessPreview,
     /// PDF Optimizer choices.
     pub optimize_draft: OptimizeDraft,
     /// The running optimization (Optimize PDF ▸ Advanced optimization).
@@ -776,6 +784,8 @@ pub struct PdfCraftApp {
     /// Number pages dialog settings (1-based pages).
     pub number_draft: NumberDraft,
     pub(crate) word_count_draft: word_count_ui::Draft,
+    /// Edit ▸ Convert dates (和暦/西暦): the dates found and which to convert.
+    pub(crate) date_convert_draft: era_dates_ui::Draft,
     pub printer_marks_draft: printer_marks_ui::PrinterMarksDraft,
     pub convert_colours_draft: convert_colours_ui::ConvertColoursDraft,
     pub hairlines_draft: hairlines_ui::HairlinesDraft,

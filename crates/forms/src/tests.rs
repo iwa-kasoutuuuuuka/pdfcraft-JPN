@@ -1702,6 +1702,48 @@ fn formats_validation_and_calculations_run_like_acrobat() {
     assert_eq!(field(&fields(&doc), "Price").actions.format, Format::None);
 }
 
+/// A Japanese input format is a keystroke script PdfCraft reads back by its function name, and
+/// the field names it too: the name alone still gives the format when the scripts are dropped,
+/// but a script another editor wrote since wins over it.
+#[test]
+fn a_japanese_input_format_converts_on_commit_and_is_read_back() {
+    use crate::af::{Format, JaWidth};
+    let mut doc = one_page();
+    add_field(&mut doc, 0, [50.0, 700.0, 250.0, 720.0], &NewField::Text { multiline: false }, Some("Kana")).unwrap();
+    set_props(&mut doc, "Kana", &FieldProps { format: Some(Format::Japanese(JaWidth::Katakana)), ..FieldProps::default() }).unwrap();
+    let mut doc = reopen(&doc);
+    let kana = field(&fields(&doc), "Kana").clone();
+    assert_eq!(kana.actions.format, Format::Japanese(JaWidth::Katakana));
+    assert!(kana.actions.unsupported.is_empty(), "{:?}", kana.actions.unsupported);
+    set_value(&mut doc, "Kana", &FieldValue::Text("ｶﾞｯｺｳ".into())).unwrap();
+    assert_eq!(field(&fields(&doc), "Kana").value, ["ガッコウ"]);
+
+    // Scripts dropped by another tool: the field's own name for the format is read.
+    doc.update_dict(kana.obj, |d| {
+        d.remove(b"AA");
+    })
+    .unwrap();
+    assert_eq!(field(&fields(&doc), "Kana").actions.format, Format::Japanese(JaWidth::Katakana));
+    set_value(&mut doc, "Kana", &FieldValue::Text("ﾊﾟﾝ".into())).unwrap();
+    assert_eq!(field(&fields(&doc), "Kana").value, ["パン"]);
+
+    // Another editor's keystroke script since: the stale name is not used.
+    doc.update_dict(kana.obj, |d| {
+        let mut k = Dict::new();
+        k.set(b"S".to_vec(), Object::name("JavaScript"));
+        k.set(b"JS".to_vec(), PdfString::literal(b"AFNumber_Keystroke(2, 0, 0, 0, \"\", true);".to_vec()));
+        let mut f = Dict::new();
+        f.set(b"S".to_vec(), Object::name("JavaScript"));
+        f.set(b"JS".to_vec(), PdfString::literal(b"AFNumber_Format(2, 0, 0, 0, \"\", true);".to_vec()));
+        let mut aa = Dict::new();
+        aa.set(b"K".to_vec(), Object::Dict(k));
+        aa.set(b"F".to_vec(), Object::Dict(f));
+        d.set(b"AA".to_vec(), Object::Dict(aa));
+    })
+    .unwrap();
+    assert!(matches!(field(&fields(&doc), "Kana").actions.format, Format::Number { decimals: 2, .. }));
+}
+
 /// A Calculate script that spells the notation's markers in a string, not in a comment, is kept
 /// as a script and runs: the form used to calculate the string's notation instead.
 #[test]

@@ -208,6 +208,7 @@ impl PdfCraftApp {
             "file.revert" => self.dialog = Some(Dialog::Revert),
             "file.properties" => self.dialog = Some(Dialog::Properties(PropsTab::Description)),
             "file.word_count" => self.dialog = Some(Dialog::WordCount),
+            "edit.convert_dates" => self.dialog = Some(Dialog::ConvertDates),
             "protect.properties" => self.dialog = Some(Dialog::Properties(PropsTab::Security)),
             // A restricted document's security changes once its permissions password is entered.
             "protect.password" | "protect.remove" if self.active_ids().and_then(|(_, id)| self.session.get(id)).is_some_and(|d| d.can_unlock()) => {
@@ -541,6 +542,7 @@ impl PdfCraftApp {
             "ocr.recognize" => self.dialog = Some(Dialog::RecognizeText),
             "ocr.enhance" => self.dialog = Some(Dialog::EnhanceScan),
             "ocr.export_text" => self.dialog = Some(Dialog::ExportOcrText),
+            "ocr.export_tables_csv" => self.dialog = Some(Dialog::ExportTablesCsv),
             "ocr.folder" => self.dialog = Some(Dialog::OcrFolder),
             "ocr.recognize_batch" => self.ocr_files_dialog(),
             "ocr.correct" => self.ocr_verify.open = true,

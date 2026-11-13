@@ -252,7 +252,7 @@ pub fn tools() -> Vec<ToolDef> {
                 "generation":{"type":"integer","minimum":0,"description":"Use generation returned by object_list to reject a stale selection."}}), &["doc","page"])),
         t("object_paste", "Paste copied objects", "Edit ▸ Paste of what object_copy copied, onto page of doc as page content that draws the same: where it was, or on the page it came from 18 points down and to the right, and 18 more for each further paste onto the same page; centred when that would leave it off the page. Resources join the page's under names that don't clash; into another document the fonts, images and other objects they use are copied (each once, sharing what is there; refused past 20,000 objects or 256 MB). Pasted content is untagged and in no layer. One undo step.")
             .with(schema(json!({"doc":doc(),"page":{"type":"integer","minimum":1}}), &["doc","page"])),
-        t("text_word_count", "Word count", "Count Unicode words and characters on selected pages (default all), with totals and per-page counts. Table/code exclusions use PDF structure tags, not visual guesses; unclassified text is retained. Image exclusion removes Figure-tagged and invisible/OCR text. Does not run OCR. Copy permission is required. Fails rather than returning a partial total when a page cannot be read.")
+        t("text_word_count", "Word count", "Count Unicode words and characters on selected pages (default all), with totals and per-page counts. Also characters_without_punctuation (no whitespace, punctuation or symbols such as 、。「」) and manuscript: the 400-square Japanese manuscript paper (原稿用紙) the text fills, 20 squares a line and 20 lines a sheet, each paragraph and each page starting a new line, a line-start-forbidden mark (、。」) hanging at the end of a full line (lines, sheets, last_sheet_lines). Table/code exclusions use PDF structure tags, not visual guesses; unclassified text is retained. Image exclusion removes Figure-tagged and invisible/OCR text. Does not run OCR. Copy permission is required. Fails rather than returning a partial total when a page cannot be read.")
             .ro()
             .cmd("file.word_count")
             .with(schema(json!({ "doc": doc(), "pages": pages("to count (default: all)"),
@@ -624,6 +624,61 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["doc", "page", "at", "name"],
             )),
+        t("page_add_business_stamp", "Add a business stamp (ビジネス用スタンプ)", "Stamp a Japanese business stamp such as 承認, 確認済, 至急, 社外秘, 回覧, 複製厳禁, 済, 重要 or 控 (or any word of 1-6 characters) on a page as a vector Stamp comment, so it can be moved, resized and deleted like any stamp (comment_edit, comment_delete). at [x, y] is its centre in points from the top-left of the displayed page. The word is bold inside an outline: frame \"rounded\" (default, one outline with rounded corners) or \"double\" (a thick outer rule and a thin inner one). date adds a date line under the word: \"today\" or yyyy-mm-dd; era true writes it with the Japanese era (令和8.11.13) instead of Western (2026.11.13). name adds a name line under it (up to 12 characters). size is the word's letter size in points (8-48, default 20); the stamp is sized around its text. color is #RRGGBB or a name (default vermilion #D91F1A). Japanese text needs the Japanese face from craft-fonts; a build without it refuses Japanese text with an error saying so. Undoable.")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "page": { "type": "integer", "minimum": 1 },
+                    "at": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+                    "word": { "type": "string", "minLength": 1, "maxLength": 6 },
+                    "frame": { "type": "string", "enum": ["rounded", "double"] },
+                    "date": { "type": "string", "description": "\"today\" or yyyy-mm-dd" },
+                    "era": { "type": "boolean" },
+                    "name": { "type": "string", "maxLength": 12 },
+                    "size": { "type": "number", "minimum": 8, "maximum": 48 },
+                    "color": { "type": "string" },
+                    "author": { "type": "string" },
+                }),
+                &["doc", "page", "at", "word"],
+            )),
+        t("page_add_tally_seal", "Add a tally seal across pages (契印)", "Stamp a name seal (as page_add_seal kind \"name\") across the edge between every two consecutive pages from first to last (1-based, default the whole document; at least two pages): each page gets a Stamp comment showing exactly half the seal, touching the shared edge, both halves at the same height, so the pages laid side by side show the whole seal and a removed or swapped page shows a broken one. direction \"ltr\" (default; the next page is to the right, as in 横書き documents bound on the left): page N carries the seal's left half on its right edge and page N+1 the right half on its left edge; \"rtl\" (縦書き, bound on the right) mirrors it. y is the seal's centre in points from the top of the displayed pages (default halfway down the shorter page of each pair); the seal must fit on both pages. name is 1-6 characters (12 if all ASCII); shape circle (default) or square; size is the seal's side in points (20-200, default 48); color #RRGGBB or a name (default vermilion). One undo removes every half. Japanese text needs the Japanese face from craft-fonts.")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "first": { "type": "integer", "minimum": 1 },
+                    "last": { "type": "integer", "minimum": 1 },
+                    "name": { "type": "string", "minLength": 1, "maxLength": 12 },
+                    "shape": { "type": "string", "enum": ["circle", "square"] },
+                    "size": { "type": "number", "minimum": 20, "maximum": 200 },
+                    "color": { "type": "string" },
+                    "direction": { "type": "string", "enum": ["ltr", "rtl"] },
+                    "y": { "type": "number" },
+                    "author": { "type": "string" },
+                }),
+                &["doc", "name"],
+            )),
+        t("dates_find_ja", "Find dates (和暦/西暦)", "Find the dates in a document's page text (by line, as text_lines lists it), comment text and text field values, and say what each converts to in the calendar to: japanese (和暦, default) or western (西暦). Recognised: era dates 令和6年5月1日, 令和元年, 平成31年4月, R6.5.1, H31/4/30, R6年5月1日 (spaces between the parts allowed), and Western dates 2024年5月1日, 2024年5月, 2024/5/1, 2024-05-01, 2024.5.1 (a Western year alone, 2024年, is not taken). Full-width digits and separators are read as ASCII. Phone numbers and longer digit runs are not dates. Era dates are checked against the era's exact days: 平成31年5月1日, 令和元年4月 or 昭和64年1月8日 are status invalid with problem outside-era; no-such-day (2月30日), before-meiji (no era form) and ambiguous (a Western year or month spanning two eras, 1989年1月) are the other problems. Conversions are written in kanji style (R6.5.1 gives 2024年5月1日; year 1 is 元年) with the source's digit width; a date already in the target calendar is status already. Returns hits in page order (hit number, page, source kind page-text/comment/field with line, comment index or field name, text, status convert/already/invalid, converted or problem and note) with counts. page_text_withheld: true when the document's security doesn't allow copying, so page text was not read. Read only; dates_convert_ja applies.")
+            .ro()
+            .cmd("edit.convert_dates")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "to": { "type": "string", "enum": ["japanese", "western"], "description": "The calendar to convert to (default japanese)." },
+                    "pages": pages("to search (default: all; fields on no page are read only then)"),
+                }),
+                &["doc"],
+            )),
+        t("dates_convert_ja", "Convert dates (和暦/西暦)", "Convert the dates dates_find_ja finds (same doc, to and pages) to the calendar to, as one undoable edit: every hit with status convert, or only the hit numbers listed in hits (from a dates_find_ja call on the unchanged document). Comment text and text field values are replaced (fields with a date or number format script, read-only fields and values too long for the field are left alone). Page text is rewritten line by line in place as text_edit rewrites a line, in its own font when it has the characters, else a craft-fonts Japanese face; each rewrite is tried on a copy first, and a line the rewrite refuses, or that would not read back as the converted text, is left unchanged and listed in skipped with the reason. Invalid and already-converted hits are skipped. Returns replaced and skipped (page, kind, text, converted or reason).")
+            .cmd("edit.convert_dates")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "to": { "type": "string", "enum": ["japanese", "western"], "description": "The calendar to convert to (default japanese)." },
+                    "pages": pages("to search (default: all)"),
+                    "hits": { "type": "array", "items": { "type": "integer", "minimum": 1 }, "minItems": 1, "description": "Hit numbers from dates_find_ja to convert (default: every convertible hit)." },
+                }),
+                &["doc"],
+            )),
         t("model_add", "Add a 3D model", "Add a 3D model (Acrobat: Rich Media ▸ Add 3D): the U3D or PRC file at path, recognised by its first bytes, as a 3D annotation in rect [x0, y0, x1, y1] (points from the top-left of the displayed page; each side 1–14400 pt; at most 256 MiB). Its poster, what prints and what readers show until the model is activated, is the picture at poster (a PDF page, poster_page default 1, or an image) fitted inside rect keeping its shape and centred; without poster, a frame labelled \"3D model\". activation: click (default), page_open or page_visible. name is its description (default: the file name). No views are added: readers open the model on its own default view. Undoable.")
             .with(schema(
                 json!({
@@ -669,7 +724,7 @@ pub fn tools() -> Vec<ToolDef> {
                 "rect": { "type": "array", "items": { "type": "number" }, "minItems": 4, "maxItems": 4, "description": "Move/resize: points from the top-left of the displayed page." },
                 "rotation": { "type": "integer", "enum": [0, 90, 180, 270], "description": "Widget rotation in degrees, counterclockwise. The field keeps its rectangle; its content turns inside it." },
                 "appearance": { "type": "object", "description": "Appearance tab: border, fill, text_color (#RRGGBB, a name or \"none\"), width (0–12 points; 1 thin, 2 medium, 3 thick), style (solid, dashed, beveled, inset, underline), font (helvetica, times, courier)." },
-                "format": { "description": "Format tab: {\"type\": \"number\", \"decimals\": 2, \"currency\": \"$\", \"separator\": 0-4, \"negative\": 0-3}, {\"type\": \"percent\"}, {\"type\": \"date\"|\"time\", \"pattern\": \"mm/dd/yyyy\"}, {\"type\": \"zip\"|\"zip4\"|\"phone\"|\"ssn\"}, {\"type\": \"mask\", \"mask\": \"AA-9999\"}, or \"none\"." },
+                "format": { "description": "Format tab: {\"type\": \"number\", \"decimals\": 2, \"currency\": \"$\", \"separator\": 0-4, \"negative\": 0-3}, {\"type\": \"percent\"}, {\"type\": \"date\"|\"time\", \"pattern\": \"mm/dd/yyyy\"}, {\"type\": \"zip\"|\"zip4\"|\"phone\"|\"ssn\"}, {\"type\": \"mask\", \"mask\": \"AA-9999\"}, {\"type\": \"japanese\", \"width\": \"katakana\"|\"hiragana\"|\"halfwidth_digits\"|\"halfwidth_alnum\"|\"fullwidth\"} (Japanese input: what is typed or filled is converted on commit, e.g. half-width kana to full-width katakana), or \"none\"." },
                 "validate": { "description": "Validate tab: {\"min\": 0, \"max\": 100} (either may be left out, or null) or \"none\"." },
                 "calculate": { "description": "Calculate tab: {\"op\": \"sum\"|\"product\"|\"average\"|\"min\"|\"max\", \"fields\": [\"a\", \"b\"]}, {\"notation\": \"Price * Qty\"} (simplified field notation), or \"none\"." },
             }),
@@ -1232,7 +1287,7 @@ pub fn tools() -> Vec<ToolDef> {
         t(
             "doc_header_footer",
             "Add header and footer",
-            "Add a header and/or footer to pages. Text boxes: header_left/center/right, footer_left/center/right. Tokens: <<1>> page number, <<n>> page count, <<1 of n>>, <<Page 1 of n>>, <<1/n>>, dates <<m/d/yyyy>> <<yyyy-mm-dd>> <<mmmm d, yyyy>> <<dd.mm.yyyy>> (and more), Bates <<Bates Number#6#1#PREFIX#SUFFIX>>. shrink: true scales the page content down evenly into the room the header and footer leave free, so they don't cover it. font: Helvetica (default), Times or Courier; Thai is drawn from PdfCraft's built-in Thai face beside it (a build without one refuses it). replace: true swaps out existing ones (Update). Undoable.",
+            "Add a header and/or footer to pages. Text boxes: header_left/center/right, footer_left/center/right. Tokens: <<1>> page number, <<n>> page count, <<1 of n>>, <<Page 1 of n>>, <<1/n>>, Japanese page numbers <<- 1 ->> (- 1 -), <<1 / n>> (1 / 10), <<1ページ>>, <<第1頁>>, <<一>> (kanji numerals: 百五) and <<第一頁>> (those written in kana or kanji need the Japanese face; a build without one refuses them), dates <<m/d/yyyy>> <<yyyy-mm-dd>> <<mmmm d, yyyy>> <<dd.mm.yyyy>> (and more), Bates <<Bates Number#6#1#PREFIX#SUFFIX>>. shrink: true scales the page content down evenly into the room the header and footer leave free, so they don't cover it. font: Helvetica (default), Times or Courier; Thai is drawn from PdfCraft's built-in Thai face beside it (a build without one refuses it). replace: true swaps out existing ones (Update). Undoable.",
         )
         .cmd("edit.header_footer")
         .with(schema(
@@ -1597,6 +1652,27 @@ pub fn tools() -> Vec<ToolDef> {
                     "separator": { "type": "string", "enum": ["line", "formfeed"], "description": "Text: how pages are told apart (default line)." },
                     "title": { "type": "string", "description": "Word: the document title (default: the document name)." },
                     "document_language": { "type": "string", "description": "Word: BCP 47 language tag (default: from language, ja-JP)." },
+                    "language": { "type": "string", "enum": language_enum(), "description": "OCR language when ocr_if_needed (default ja)." },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"], "description": "OCR engine when ocr_if_needed (default auto)." },
+                    "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },
+                    "dpi": { "type": "number", "minimum": 72, "maximum": 600 },
+                    "auto_rotate": { "type": "boolean" },
+                    "deskew": { "type": "boolean" },
+                    "denoise": { "type": "boolean" },
+                    "binarize": { "type": "boolean" },
+                }),
+                &["doc", "path"],
+            )),
+        t("export_tables_csv", "Export tables to CSV", "Scan & OCR ▸ Export tables to CSV: find the tables on pages from where their text sits (a recognised scan's invisible text included) and write them as CSV that Excel opens correctly in Japanese: UTF-8 with a byte order mark, CRLF line ends, RFC 4180 quoting (a field with a comma, quote or line break is quoted, quotes doubled; a field a spreadsheet would run as a formula gets a leading '). Cells come from geometry, never from spaces: a drawn grid (horizontal and vertical rules that meet) decides its cells and a cell may hold several lines; elsewhere a line is cut where the gap between words is wider than about a character, and consecutive lines with two or more cells are a table whose columns are the gutters the rows share (a row with missing cells gets empty fields). Japanese characters of one cell are joined without spaces. Horizontal text only. layout per_table (default) writes one file per table named <path stem>_p<page>_t<n>.csv beside path; one_file writes every table to path, a blank line between two tables. use_rules false ignores ruled lines. ocr_if_needed first reads the selected pages that have no text layer (language ja and engine auto unless you say otherwise; the open document is not changed). Nothing is written when no table is found (warnings says so). Returns files, tables (page, index, rows, columns, ruled), ocr_pages, empty_pages and warnings. Paths honour root. The document must allow copying.")
+            .cmd("ocr.export_tables_csv")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "path": { "type": "string", "description": "A .csv path: the file (one_file), or the name the per-table files are derived from (per_table); written atomically." },
+                    "layout": { "type": "string", "enum": ["per_table", "one_file"], "description": "One file per table (default) or all tables in one file." },
+                    "pages": pages("to look at (default: all)"),
+                    "use_rules": { "type": "boolean", "description": "Use ruled lines to find the cells of drawn grids (default true)." },
+                    "ocr_if_needed": { "type": "boolean", "description": "Read pages without a text layer first (default false)." },
                     "language": { "type": "string", "enum": language_enum(), "description": "OCR language when ocr_if_needed (default ja)." },
                     "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"], "description": "OCR engine when ocr_if_needed (default auto)." },
                     "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },

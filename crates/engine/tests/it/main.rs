@@ -7,6 +7,7 @@ mod support {
 mod dingbat_check_box;
 mod document_fonts;
 mod form_rotation;
+mod japanese_input_format;
 mod marked_content_isolation;
 mod ocr_edit;
 mod office_export_images;

@@ -19,5 +19,6 @@ pub(super) mod ocr_web;
 pub(super) mod optimize_ui;
 pub(super) mod print_ui;
 pub(super) mod scan_clean_ui;
+pub(super) mod table_csv_ui;
 pub(super) mod vertical_ui;
 pub(super) mod web_print;

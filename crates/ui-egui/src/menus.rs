@@ -148,6 +148,7 @@ const EDIT: &[&str] = &[
     SEP,
     "edit.find",
     "edit.advanced_search",
+    "edit.convert_dates",
     SEP,
     "edit.column_select",
     "edit.snapshot",

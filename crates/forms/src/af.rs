@@ -15,6 +15,7 @@ use std::ops::Range;
 
 mod calc;
 mod format;
+mod japanese;
 mod script;
 
 #[cfg(test)]
@@ -24,6 +25,7 @@ pub use format::{
     DATE_PRESETS, DateNames, DateTime, ENGLISH_DATE_NAMES, TIME_PRESETS, date_names, format_date, format_date_in, format_value, format_value_in,
     js_number, keystroke, make_number, parse_date, set_date_names, validate,
 };
+pub use japanese::{JA_FORMAT_KEY, JA_KEYSTROKE, JaWidth, convert as convert_japanese, keystroke_js as japanese_keystroke_js};
 use script::{Arg, call};
 pub use script::{NOTATION_NOT_STORABLE, calculate_js, format_js, notation_storable, parse_calculate, parse_format, parse_validate, validate_js};
 
@@ -44,6 +46,9 @@ pub enum Format {
     Special(u8),
     /// `AFSpecial_KeystrokeEx(cMask)`: 9 digit, A letter, O letter or digit, X any.
     Mask(String),
+    /// A Japanese character-width input format (全角カナ, 半角数字, …): typed text is converted on
+    /// commit. Stored as a keystroke script calling `PdfCraftJa_Keystroke` ([`japanese`]).
+    Japanese(JaWidth),
 }
 
 /// The Validate tab.

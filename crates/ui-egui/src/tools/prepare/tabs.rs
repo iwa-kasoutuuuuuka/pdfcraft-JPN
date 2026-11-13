@@ -1,5 +1,6 @@
 use super::draft::{ACTION_KINDS, ActionDraft, FieldDraft};
 use super::{CalcOp, Calculate, DATE_PRESETS, Format, TIME_PRESETS, Validate, format_value, theme, widgets};
+use pdfcraft_engine::form_scripts::{JaWidth, convert_japanese};
 
 /// The categories of the Format tab.
 #[derive(Clone, Copy, PartialEq)]
@@ -10,6 +11,7 @@ enum Category {
     Date,
     Time,
     Special,
+    Japanese,
 }
 
 fn category(f: &Format) -> Category {
@@ -20,6 +22,7 @@ fn category(f: &Format) -> Category {
         Format::Date(_) => Category::Date,
         Format::Time(_) => Category::Time,
         Format::Special(_) | Format::Mask(_) => Category::Special,
+        Format::Japanese(_) => Category::Japanese,
     }
 }
 
@@ -43,6 +46,7 @@ pub(super) fn format_tab(ui: &mut egui::Ui, d: &mut FieldDraft, t: &crate::theme
                 Category::Date => "Date",
                 Category::Time => "Time",
                 Category::Special => "Special",
+                Category::Japanese => "Japanese input",
             }))
             .show_ui(ui, |ui| {
                 for (c, l) in [
@@ -52,6 +56,7 @@ pub(super) fn format_tab(ui: &mut egui::Ui, d: &mut FieldDraft, t: &crate::theme
                     (Category::Date, tl!("Date")),
                     (Category::Time, tl!("Time")),
                     (Category::Special, tl!("Special")),
+                    (Category::Japanese, tl!("Japanese input")),
                 ] {
                     ui.selectable_value(&mut picked, c, l);
                 }
@@ -65,6 +70,7 @@ pub(super) fn format_tab(ui: &mut egui::Ui, d: &mut FieldDraft, t: &crate::theme
             Category::Date => Format::Date("mm/dd/yyyy".into()),
             Category::Time => Format::Time("HH:MM".into()),
             Category::Special => Format::Special(0),
+            Category::Japanese => Format::Japanese(JaWidth::Katakana),
         };
     }
     ui.add_space(8.0);
@@ -75,6 +81,7 @@ pub(super) fn format_tab(ui: &mut egui::Ui, d: &mut FieldDraft, t: &crate::theme
         Format::Special(2) => "5551234567",
         Format::Special(3) => "123456789",
         Format::Special(_) => "123456789",
+        Format::Japanese(_) => "ｶﾞｯｺｳ ０３－１２３４ abc",
         _ => "",
     };
     match &mut d.format {
@@ -175,12 +182,27 @@ pub(super) fn format_tab(ui: &mut egui::Ui, d: &mut FieldDraft, t: &crate::theme
                 d.format = Format::Special(idx as u8);
             }
         }
+        Format::Japanese(w) => {
+            craft_ui::ComboBox::from_id_salt("fmt-japanese").selected_text(tl!(w.label())).width(220.0).show_ui(ui, |ui| {
+                for c in JaWidth::ALL {
+                    ui.selectable_value(w, c, tl!(c.label()));
+                }
+            });
+            ui.label(egui::RichText::new(tl!("What is typed is converted when the field is left.")).small().color(t.text_faint));
+        }
     }
     if !sample.is_empty() && d.format != Format::None {
         ui.add_space(6.0);
-        ui.label(
-            egui::RichText::new(crate::i18n::fmt(tl!("Example: {sample}"), &[("sample", &format_value(&d.format, sample))])).color(t.text_muted),
-        );
+        ui.label(egui::RichText::new(crate::i18n::fmt(tl!("Example: {sample}"), &[("sample", &example(&d.format, sample))])).color(t.text_muted));
+    }
+}
+
+/// The Format tab's example: how `sample` is shown, or for a Japanese input format what typing it
+/// leaves (`ｶﾞｯｺｳ → ガッコウ`).
+fn example(f: &Format, sample: &str) -> String {
+    match f {
+        Format::Japanese(w) => format!("{sample} → {}", convert_japanese(*w, sample)),
+        f => format_value(f, sample),
     }
 }
 

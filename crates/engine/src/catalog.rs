@@ -270,6 +270,7 @@ pub static TOOL_GROUPS: &[ToolGroup] = &[
                 item("Enhance camera image", "camera", "ocr.enhance_camera", Ready),
                 item("Correct recognized text", "text-select", "ocr.correct", Ready),
                 item("Export recognized text", "file-output", "ocr.export_text", Ready),
+                item("Export tables to CSV", "file-spreadsheet", "ocr.export_tables_csv", Ready),
             ],
         }],
     },

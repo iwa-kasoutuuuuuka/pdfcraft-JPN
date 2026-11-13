@@ -105,6 +105,8 @@ pub enum Dialog {
     CreateImages,
     /// Create ▸ Vertical Japanese document (縦書き文書).
     CreateVertical,
+    /// Edit ▸ Convert dates (和暦/西暦の一括変換).
+    ConvertDates,
     Properties(PropsTab),
     About,
     Shortcuts,
@@ -183,6 +185,8 @@ pub enum Dialog {
     EnhanceScan,
     /// Scan & OCR ▸ Export recognized text (txt / Word).
     ExportOcrText,
+    /// Scan & OCR ▸ Export tables to CSV.
+    ExportTablesCsv,
     /// Scan & OCR ▸ OCR a folder.
     OcrFolder,
     /// The JavaScript console (⌘J).

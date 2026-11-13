@@ -22,7 +22,18 @@ pub struct Counts {
     /// Unicode scalar values, including whitespace.
     pub characters: usize,
     pub characters_without_spaces: usize,
+    /// pdfcraft-JPN: characters without whitespace, punctuation (、。「」 and the like) or symbols
+    /// ([`is_punctuation_or_symbol`]): the count Japanese writing usually means by 文字数.
+    pub characters_without_punctuation: usize,
+    /// pdfcraft-JPN: the lines of 400字詰め原稿用紙 the text fills ([`manuscript_lines`]). Each
+    /// page starts a new line. [`Counts::manuscript_sheets`] turns it into sheets.
+    pub manuscript_lines: usize,
 }
+
+/// Squares on one line of a 400字詰め原稿用紙.
+pub const MANUSCRIPT_SQUARES_PER_LINE: usize = 20;
+/// Lines on one sheet of a 400字詰め原稿用紙.
+pub const MANUSCRIPT_LINES_PER_SHEET: usize = 20;
 
 impl Counts {
     pub fn of(text: &str) -> Self {
@@ -30,6 +41,8 @@ impl Counts {
             words: text.unicode_words().count(),
             characters: text.chars().count(),
             characters_without_spaces: text.chars().filter(|c| !c.is_whitespace()).count(),
+            characters_without_punctuation: text.chars().filter(|&c| !c.is_whitespace() && !is_punctuation_or_symbol(c)).count(),
+            manuscript_lines: manuscript_lines(text),
         }
     }
 
@@ -37,7 +50,90 @@ impl Counts {
         self.words = self.words.saturating_add(other.words);
         self.characters = self.characters.saturating_add(other.characters);
         self.characters_without_spaces = self.characters_without_spaces.saturating_add(other.characters_without_spaces);
+        self.characters_without_punctuation = self.characters_without_punctuation.saturating_add(other.characters_without_punctuation);
+        self.manuscript_lines = self.manuscript_lines.saturating_add(other.manuscript_lines);
     }
+
+    /// The 400字詰め原稿用紙 sheets the text fills, and the lines used on the last of them:
+    /// `(0, 0)` without text, `(1, 20)` for exactly one full sheet, `(2, 1)` for one line more.
+    pub fn manuscript_sheets(&self) -> (usize, usize) {
+        let lines = self.manuscript_lines;
+        let sheets = lines.div_ceil(MANUSCRIPT_LINES_PER_SHEET);
+        (sheets, lines.saturating_sub(sheets.saturating_sub(1).saturating_mul(MANUSCRIPT_LINES_PER_SHEET)))
+    }
+}
+
+/// Punctuation and symbols, which Japanese character counts usually leave out: ASCII and
+/// Latin-1 punctuation and signs, general punctuation (… ‥ “ ” ‐ —), arrows, mathematical
+/// operators, technical symbols, box drawing, shapes (■ ○ ★) and dingbats, CJK punctuation
+/// (、。「」『』【】〜 and the full-width space) and the full-width and half-width forms of
+/// punctuation (！？（）：・ ｢｣). Letters that live among them stay characters: 々 〆 〇 ー, and
+/// ª º µ and the superscripts and fractions of Latin-1.
+pub fn is_punctuation_or_symbol(c: char) -> bool {
+    c.is_ascii_punctuation()
+        || matches!(c,
+            '\u{A1}'..='\u{A9}' | '\u{AB}'..='\u{B1}' | '\u{B4}' | '\u{B6}'..='\u{B8}' | '\u{BB}' | '\u{BF}' | '\u{D7}' | '\u{F7}'
+            | '\u{2010}'..='\u{205E}'
+            | '\u{2190}'..='\u{2BFF}'
+            | '\u{3000}'..='\u{3004}' | '\u{3008}'..='\u{3020}' | '\u{3030}' | '\u{303D}' | '\u{30A0}' | '\u{30FB}'
+            | '\u{FE30}'..='\u{FE4F}'
+            | '\u{FF01}'..='\u{FF0F}' | '\u{FF1A}'..='\u{FF20}' | '\u{FF3B}'..='\u{FF40}' | '\u{FF5B}'..='\u{FF65}' | '\u{FFE0}'..='\u{FFEE}')
+}
+
+/// The lines of 400字詰め原稿用紙 (20 squares a line) that `text` fills when it is written in
+/// the way a manuscript sheet is filled:
+///
+/// * every character takes a square of its own, except half-width whitespace, which the text
+///   extraction puts between words and lines and which takes none; a full-width space (U+3000)
+///   is written as an empty square;
+/// * every paragraph (line break) starts a new line, and an empty paragraph is an empty line. No
+///   indentation is added: a paragraph's first square is empty only when the text itself starts
+///   it with a full-width space. Empty lines before and after the text take no line;
+/// * 行頭禁則: a character that may not start a line ([`pdfcraft_fonts::no_line_start`]: 、。」
+///   small kana, ー …) that would fall in the first square of a line hangs at the end of the
+///   previous line (ぶら下げ) instead of taking a square. When two or more such characters follow
+///   each other, or a line would end with an opening bracket (行末禁則), the last character of
+///   the line goes down with them (追い出し), as in the 原稿用紙 documents PdfCraft makes.
+pub fn manuscript_lines(text: &str) -> usize {
+    let breaks = |c: char| matches!(c, '\n' | '\r' | '\u{B}' | '\u{C}' | '\u{85}' | '\u{2028}' | '\u{2029}');
+    let text = text.replace("\r\n", "\n");
+    let squares = |para: &str| -> Vec<char> { para.chars().filter(|&c| c == '\u{3000}' || !c.is_whitespace()).collect() };
+    let paragraphs: Vec<Vec<char>> = text.split(breaks).map(squares).collect();
+    let Some(first) = paragraphs.iter().position(|p| !p.is_empty()) else { return 0 };
+    let last = paragraphs.iter().rposition(|p| !p.is_empty()).unwrap_or(first);
+    paragraphs.get(first..=last).unwrap_or_default().iter().fold(0usize, |lines, p| lines.saturating_add(paragraph_lines(p)))
+}
+
+/// The lines one paragraph's `squares` take on the sheet (an empty paragraph takes one).
+fn paragraph_lines(squares: &[char]) -> usize {
+    use pdfcraft_fonts::{no_line_end, no_line_start};
+    let mut lines = 1usize;
+    let mut row = 0usize;
+    let mut i = 0usize;
+    while i < squares.len() {
+        if row >= MANUSCRIPT_SQUARES_PER_LINE {
+            let run = squares.iter().skip(i).take_while(|&&s| no_line_start(s)).take(2).count();
+            let last_opens = i.checked_sub(1).and_then(|k| squares.get(k)).is_some_and(|&p| no_line_end(p));
+            if run == 1 && !last_opens {
+                // ぶら下げ: it takes no square, and the character after it starts the next line
+                // (when there is one).
+                i += 1;
+                if i < squares.len() {
+                    lines = lines.saturating_add(1);
+                    row = 0;
+                }
+                continue;
+            }
+            // 追い出し: the line's last character goes down with the ones that can't start a
+            // line (or because it is an opening bracket), so the new line already holds it.
+            lines = lines.saturating_add(1);
+            row = usize::from(run >= 2 || last_opens);
+            continue;
+        }
+        row += 1;
+        i += 1;
+    }
+    lines
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -330,6 +426,75 @@ mod tests {
         let report = count(src, &[0], Options { exclude_tables: true, ..Options::default() }, |_| true).unwrap();
         assert_eq!(report.total.words, 4, "the unrelated form's MCID must not be excluded");
         assert!(report.unclassified_structure);
+    }
+
+    fn sheets(text: &str) -> (usize, usize) {
+        Counts::of(text).manuscript_sheets()
+    }
+
+    #[test]
+    fn manuscript_sheets_are_400_squares_with_a_count_of_lines_on_the_last() {
+        let a = |n: usize| "あ".repeat(n);
+        assert_eq!(sheets(""), (0, 0));
+        assert_eq!(sheets(" \n\n "), (0, 0));
+        assert_eq!(sheets(&a(1)), (1, 1));
+        assert_eq!(sheets(&a(20)), (1, 1));
+        assert_eq!(sheets(&a(21)), (1, 2));
+        assert_eq!(sheets(&a(400)), (1, 20), "exactly 400 squares fill one sheet");
+        assert_eq!(sheets(&a(401)), (2, 1), "one more starts a second sheet");
+        assert_eq!(sheets(&a(800)), (2, 20));
+        // Pages add up their lines.
+        let mut total = Counts::of(&a(390));
+        total.add(Counts::of(&a(30)));
+        assert_eq!(total.manuscript_lines, 20 + 2);
+        assert_eq!(total.manuscript_sheets(), (2, 2));
+    }
+
+    #[test]
+    fn manuscript_paragraphs_start_new_lines_without_invented_indentation() {
+        let a = |n: usize| "あ".repeat(n);
+        assert_eq!(manuscript_lines(&format!("{}\n{}", a(5), a(5))), 2);
+        assert_eq!(manuscript_lines(&format!("{}\r\n{}\r{}", a(5), a(5), a(5))), 3);
+        assert_eq!(manuscript_lines(&format!("{}\n\n{}", a(5), a(5))), 3, "an empty paragraph is an empty line");
+        assert_eq!(manuscript_lines(&format!("\n\n{}\n\n", a(5))), 1, "breaks around the text take no line");
+        // No indentation is invented: 20 characters fill one line.
+        assert_eq!(manuscript_lines(&a(20)), 1);
+        // A full-width space the text starts with is the empty first square.
+        assert_eq!(manuscript_lines(&format!("\u{3000}{}", a(19))), 1);
+        assert_eq!(manuscript_lines(&format!("\u{3000}{}", a(20))), 2);
+        // Half-width spaces from text extraction take no square.
+        assert_eq!(manuscript_lines(&format!("{} {}", a(10), a(10))), 1);
+    }
+
+    #[test]
+    fn manuscript_punctuation_that_would_start_a_line_hangs() {
+        let a = |n: usize| "あ".repeat(n);
+        // ぶら下げ: the stop hangs at the end of the full line instead of taking a square.
+        assert_eq!(manuscript_lines(&format!("{}。", a(20))), 1);
+        assert_eq!(manuscript_lines(&format!("{}、{}", a(20), a(20))), 2);
+        assert_eq!(sheets(&format!("{}。", a(400))), (1, 20), "a hung stop does not start a sheet");
+        assert_eq!(manuscript_lines(&format!("{}。", a(19))), 1, "a stop inside the line takes a square");
+        assert_eq!(manuscript_lines(&format!("{}。", a(20 + 19))), 2);
+        // 追い出し: 」。 can't both hang, so い goes down with them: い」。 and 18 more fill 21 squares.
+        assert_eq!(manuscript_lines(&format!("{}い」。{}", a(19), "う".repeat(18))), 3);
+        // 行末禁則: an opening bracket never ends a line.
+        assert_eq!(manuscript_lines(&format!("{}「{}", a(19), "う".repeat(19))), 2);
+        assert_eq!(manuscript_lines(&format!("{}「{}", a(19), "う".repeat(20))), 3);
+    }
+
+    #[test]
+    fn japanese_counts_leave_out_whitespace_and_punctuation() {
+        let c = Counts::of("「今日は、晴れ。」\n　ＡＢＣ！ 123…★ 々ー〇");
+        assert_eq!(c.characters_without_spaces, 21);
+        // 「 、 。 」 ！ … ★ and the spaces go; 今日は晴れ ＡＢＣ 123 々ー〇 stay.
+        assert_eq!(c.characters_without_punctuation, 14);
+        for p in ['、', '。', '「', '」', '『', '』', '【', '】', '・', '〜', '！', '？', '（', '）', '…', '―', '※', '→', '○', '★', '｢', '.', ',']
+        {
+            assert!(is_punctuation_or_symbol(p), "{p}");
+        }
+        for l in ['あ', 'ア', '漢', '々', '〆', '〇', 'ー', 'a', 'Ａ', '1', '１', 'ｱ'] {
+            assert!(!is_punctuation_or_symbol(l), "{l}");
+        }
     }
 
     #[test]

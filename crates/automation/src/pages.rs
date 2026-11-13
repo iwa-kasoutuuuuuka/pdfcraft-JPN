@@ -195,7 +195,16 @@ impl Automation {
             exclude_images: a.opt_bool("exclude_images")?.unwrap_or(false),
         };
         let report = word_count::count(doc.export_source(), &pages, options, |_| true).map_err(failed)?;
-        let counts = |c: Counts| json!({ "words": c.words, "characters": c.characters, "characters_without_spaces": c.characters_without_spaces });
+        let counts = |c: Counts| {
+            let (sheets, last_sheet_lines) = c.manuscript_sheets();
+            json!({
+                "words": c.words,
+                "characters": c.characters,
+                "characters_without_spaces": c.characters_without_spaces,
+                "characters_without_punctuation": c.characters_without_punctuation,
+                "manuscript": { "lines": c.manuscript_lines, "sheets": sheets, "last_sheet_lines": last_sheet_lines },
+            })
+        };
         Ok(json!({
             "total": counts(report.total),
             "pages": report.pages.into_iter().map(|(p, c)| json!({ "page": p + 1, "counts": counts(c) })).collect::<Vec<_>>(),

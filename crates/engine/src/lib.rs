@@ -28,6 +28,7 @@ pub use copy_image::{PagePicture, picture_at};
 pub mod dates;
 mod document;
 mod edit;
+pub mod era_dates;
 mod error;
 pub mod export;
 pub mod field_table;
@@ -58,6 +59,7 @@ pub mod signature_image;
 pub mod signature_scan;
 mod sources;
 mod stamp_preview;
+pub mod table_csv;
 #[cfg(test)]
 mod test_hooks;
 pub mod text_export;
@@ -104,6 +106,7 @@ pub use pdfcraft_edit::{
     Added, AddedImage, AddedText, Align as TextAlign, Background, ColourTarget, ColoursConverted, Content as AddedContent, ConvertColours,
     Family as FontFamily, Hairlines, HairlinesFixed, HeaderFooter, Ink as TextInk, MarkKind, PrinterMarks, Watermark,
 };
+pub use pdfcraft_edit::{Context as MarkContext, expand as expand_mark_tokens, kanji_number};
 pub use pdfcraft_edit::{VerticalOptions, VerticalPageSize, VerticalTemplate, vertical_grid_colour};
 pub use pdfcraft_forms::{
     BorderStyle, CalculatedField, CalculationIssue, CalculationOrder, CheckStyle, Field as FormField, FieldAction, FieldChange, FieldFont,

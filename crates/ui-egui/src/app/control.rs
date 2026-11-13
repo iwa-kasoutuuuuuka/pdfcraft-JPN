@@ -125,6 +125,7 @@ impl PdfCraftApp {
                     "recognize-text" => Some(Dialog::RecognizeText),
                     "enhance-scan" => Some(Dialog::EnhanceScan),
                     "export-ocr-text" => Some(Dialog::ExportOcrText),
+                    "export-tables-csv" => Some(Dialog::ExportTablesCsv),
                     "ocr-folder" => Some(Dialog::OcrFolder),
                     "js-console" => Some(Dialog::JsConsole),
                     "document-js" => Some(Dialog::DocumentJs),
