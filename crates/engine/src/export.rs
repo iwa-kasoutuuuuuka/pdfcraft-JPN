@@ -294,6 +294,17 @@ impl Exporter {
         }
     }
 
+    /// The positioned text of a page (glyphs with their boxes in page view space), for the exports
+    /// that work from where the text sits, such as tables to CSV ([`crate::table_csv`]).
+    pub fn page_text(&mut self, page: usize) -> Result<std::sync::Arc<pdfcraft_render::PageText>, String> {
+        self.check(page)?;
+        let r = self.renderer.render(RenderRequest { page, kind: RequestKind::Text, scale: 1.0, ..Default::default() });
+        match r.text {
+            Some(t) => Ok(t),
+            None => Err(format!("page {}: {}", page + 1, r.error.unwrap_or_else(|| "no text layer".into()))),
+        }
+    }
+
     /// The paragraphs of a page in reading order (vertical columns right to left), for the
     /// prose exports ([`crate::text_export`]).
     pub fn paragraphs(&mut self, page: usize) -> Result<Vec<pdfcraft_render::TextParagraph>, String> {

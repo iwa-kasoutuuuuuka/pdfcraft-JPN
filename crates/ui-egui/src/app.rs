@@ -225,6 +225,7 @@ impl PdfCraftApp {
             ocr_draft: ocr_ui::OcrDraft::default(),
             ocr_run: None,
             ocr_export_draft: Default::default(),
+            table_csv_draft: Default::default(),
             ocr_folder: Default::default(),
             ocr_batch: None,
             #[cfg(target_arch = "wasm32")]

@@ -58,6 +58,7 @@ pub mod signature_image;
 pub mod signature_scan;
 mod sources;
 mod stamp_preview;
+pub mod table_csv;
 #[cfg(test)]
 mod test_hooks;
 pub mod text_export;

@@ -86,6 +86,7 @@ mod split_view_find;
 mod split_view_render;
 mod stamps;
 mod status_layers;
+mod table_csv;
 mod text_select;
 mod theme;
 mod theme_button;

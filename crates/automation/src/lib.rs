@@ -36,6 +36,7 @@ mod reading;
 mod redact;
 mod seal;
 mod signing;
+mod table_csv;
 mod text_cache;
 mod tools;
 mod vertical_doc;

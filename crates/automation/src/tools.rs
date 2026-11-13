@@ -1608,6 +1608,27 @@ pub fn tools() -> Vec<ToolDef> {
                 }),
                 &["doc", "path"],
             )),
+        t("export_tables_csv", "Export tables to CSV", "Scan & OCR ▸ Export tables to CSV: find the tables on pages from where their text sits (a recognised scan's invisible text included) and write them as CSV that Excel opens correctly in Japanese: UTF-8 with a byte order mark, CRLF line ends, RFC 4180 quoting (a field with a comma, quote or line break is quoted, quotes doubled; a field a spreadsheet would run as a formula gets a leading '). Cells come from geometry, never from spaces: a drawn grid (horizontal and vertical rules that meet) decides its cells and a cell may hold several lines; elsewhere a line is cut where the gap between words is wider than about a character, and consecutive lines with two or more cells are a table whose columns are the gutters the rows share (a row with missing cells gets empty fields). Japanese characters of one cell are joined without spaces. Horizontal text only. layout per_table (default) writes one file per table named <path stem>_p<page>_t<n>.csv beside path; one_file writes every table to path, a blank line between two tables. use_rules false ignores ruled lines. ocr_if_needed first reads the selected pages that have no text layer (language ja and engine auto unless you say otherwise; the open document is not changed). Nothing is written when no table is found (warnings says so). Returns files, tables (page, index, rows, columns, ruled), ocr_pages, empty_pages and warnings. Paths honour root. The document must allow copying.")
+            .cmd("ocr.export_tables_csv")
+            .with(schema(
+                json!({
+                    "doc": doc(),
+                    "path": { "type": "string", "description": "A .csv path: the file (one_file), or the name the per-table files are derived from (per_table); written atomically." },
+                    "layout": { "type": "string", "enum": ["per_table", "one_file"], "description": "One file per table (default) or all tables in one file." },
+                    "pages": pages("to look at (default: all)"),
+                    "use_rules": { "type": "boolean", "description": "Use ruled lines to find the cells of drawn grids (default true)." },
+                    "ocr_if_needed": { "type": "boolean", "description": "Read pages without a text layer first (default false)." },
+                    "language": { "type": "string", "enum": language_enum(), "description": "OCR language when ocr_if_needed (default ja)." },
+                    "engine": { "type": "string", "enum": ["auto", "ocrs", "tesseract", "windows"], "description": "OCR engine when ocr_if_needed (default auto)." },
+                    "strategy": { "type": "string", "enum": ["primary", "confidence", "rover"] },
+                    "dpi": { "type": "number", "minimum": 72, "maximum": 600 },
+                    "auto_rotate": { "type": "boolean" },
+                    "deskew": { "type": "boolean" },
+                    "denoise": { "type": "boolean" },
+                    "binarize": { "type": "boolean" },
+                }),
+                &["doc", "path"],
+            )),
         t("ocr_folder", "OCR a folder", "Scan & OCR ▸ OCR a folder: make every PDF in folder searchable (an invisible text layer over the page images), one file at a time, language ja and engine auto unless you say otherwise. recursive also takes subfolders (links are never followed). Results go next to each source as <name>_ocr.pdf (suffix changes the _ocr; an empty suffix needs overwrite), or into output_dir under the same names and subfolders. A source is never replaced unless overwrite is true; without it a result that already exists is left alone and the file reported as skipped. Files that already have a text layer are skipped unless skip_with_text is false; password-protected files are skipped with the reason; a file that fails does not stop the run. Returns ok / skipped / failed / words counts and per file: status (ok, skipped, failed), output or reason. A run takes at most 1000 PDFs, 256 MiB per file and 4 GiB in all (larger folders are refused with an error before anything is read). Paths honour root. Needs the engines only for files that must be read (ocr_status).")
             .cmd("ocr.folder")
             .with(schema(

@@ -13,7 +13,7 @@ impl Automation {
     /// The OCR settings of the two tools: the usual ones, but Japanese and the automatic engine
     /// unless the call says otherwise (the other OCR tools default to English and the built-in
     /// engine).
-    fn japanese_ocr_settings(&self, a: &Args) -> Result<pdfcraft_engine::ocr::OcrSettings> {
+    pub(crate) fn japanese_ocr_settings(&self, a: &Args) -> Result<pdfcraft_engine::ocr::OcrSettings> {
         let mut settings = self.ocr_settings(a)?;
         if a.get("language").is_none() {
             settings.language = "ja".into();

@@ -4716,3 +4716,14 @@ calendar weekday	We	水
 	Choose a text file	テキストファイルを選択
 	The results would replace the original files: add a suffix or choose another output folder	結果が元のファイルを置き換えてしまいます。接尾辞を付けるか、別の保存先フォルダーを選んでください
 	Could not start text recognition	テキスト認識を開始できませんでした
+	Export tables to CSV	表を CSV に書き出す
+	Export tables to CSV…	表を CSV に書き出す…
+	Export Tables to CSV	表を CSV に書き出す
+	Finds tables from where the text sits on the page and saves them as CSV that Excel opens (UTF-8 with BOM).	ページ上の文字の位置から表を見つけ、Excel で開ける CSV（BOM 付き UTF-8）として保存します。
+	One CSV per table	表ごとに CSV を分ける
+	All tables in one CSV	すべての表を 1 つの CSV にまとめる
+	Use the ruled lines of tables	表の罫線を使う
+	Where lines are drawn around the cells, they decide the cells; elsewhere the gaps between words do	罫線のある表は罫線でセルを分け、罫線のない表は文字の間隔で分けます
+	No tables were found on the chosen pages	選んだページに表が見つかりませんでした
+	Exported {n} tables as {files} CSV files to {path}	{n} 個の表を {files} 個の CSV ファイルとして {path} に書き出しました
+	Save the tables as	表の保存先

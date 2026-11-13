@@ -164,11 +164,11 @@ fn mostly_vertical(paragraphs: &[TextParagraph]) -> bool {
 }
 
 /// The bytes of the scratch copy with its missing pages read (`None`: every page had text), and which pages (0-based) were read.
-type ReadPages = (Option<Arc<Vec<u8>>>, Vec<usize>);
+pub(crate) type ReadPages = (Option<Arc<Vec<u8>>>, Vec<usize>);
 
 /// Read the pages `pages` (0-based) of `src` that have no text of their own, on a scratch copy,
 /// and return the copy's bytes with the pages read.
-fn read_missing(
+pub(crate) fn read_missing(
     src: &ExportSource,
     name: &str,
     pages: &[usize],
