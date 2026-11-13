@@ -339,6 +339,15 @@ pub fn set_props(doc: &mut Document, name: &str, props: &FieldProps) -> Result<S
             } else {
                 d.set(b"AA".to_vec(), Object::Dict(aa));
             }
+            // A Japanese input format is also named in the field, so it is known when the
+            // script is dropped; any other format choice takes the name away.
+            match &props.format {
+                Some(crate::af::Format::Japanese(w)) => d.set(crate::af::JA_FORMAT_KEY.to_vec(), Object::name(w.name())),
+                Some(_) => {
+                    d.remove(crate::af::JA_FORMAT_KEY);
+                }
+                None => {}
+            }
         })?;
     }
     let only = apply_late_widget_props(doc, &f, props, &new_da)?;

@@ -662,6 +662,8 @@ pub fn format_value_in(f: &Format, value: &str, names: &DateNames) -> String {
         Format::Date(fmt) | Format::Time(fmt) => parse_date(value, fmt).map_or_else(|| value.to_string(), |dt| format_date_in(dt, fmt, names)),
         Format::Special(n) => apply_mask(SPECIAL_MASKS[(*n).min(3) as usize], value).unwrap_or_else(|| value.to_string()),
         Format::Mask(m) => apply_mask(m, value).unwrap_or_else(|| value.to_string()),
+        // The value was converted when it was typed; shown as stored, as other viewers show it.
+        Format::Japanese(_) => value.to_string(),
     }
 }
 
@@ -689,6 +691,7 @@ pub fn keystroke(f: &Format, field: &str, value: &str) -> Result<String, String>
             apply_mask(m, value).filter(|s| mask_fits(m, s)).map(|_| value.trim().to_string()).ok_or_else(bad)
         }
         Format::Mask(m) => apply_mask(m, value).map(|_| value.trim().to_string()).ok_or_else(bad),
+        Format::Japanese(w) => Ok(super::convert_japanese(*w, value)),
     }
 }
 
