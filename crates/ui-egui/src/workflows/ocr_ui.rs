@@ -42,6 +42,10 @@ pub struct OcrDraft {
     pub deskew: bool,
     pub denoise: bool,
     pub binarize: bool,
+    /// Straighten a page only when it is tilted or turned (on top of the flags above).
+    pub auto_preprocess: bool,
+    /// Correct characters the engine confuses where only one Japanese reading fits.
+    pub fix_japanese: bool,
     /// What Accept produces.
     pub output_mode: OutputMode,
     /// Batch: leave files that already contain text alone.
@@ -71,6 +75,8 @@ impl Default for OcrDraft {
             deskew: false,
             denoise: false,
             binarize: false,
+            auto_preprocess: true,
+            fix_japanese: true,
             output_mode: OutputMode::default(),
             skip_text_files: false,
             skip_text_pages: true,
@@ -92,6 +98,8 @@ impl OcrDraft {
             deskew: self.deskew,
             denoise: self.denoise,
             binarize: self.binarize,
+            auto_preprocess: self.auto_preprocess,
+            fix_japanese: self.fix_japanese,
             output_mode: self.output_mode,
             skip_text_files: self.skip_text_files,
             skip_text_pages: self.skip_text_pages && !self.text_pages,
@@ -124,9 +132,14 @@ impl OcrDraft {
         if let Some(m) = v["output_mode"].as_str() {
             self.output_mode = OutputMode::parse(m);
         }
-        for (key, flag) in
-            [("auto_rotate", &mut self.auto_rotate), ("deskew", &mut self.deskew), ("denoise", &mut self.denoise), ("binarize", &mut self.binarize)]
-        {
+        for (key, flag) in [
+            ("auto_rotate", &mut self.auto_rotate),
+            ("deskew", &mut self.deskew),
+            ("denoise", &mut self.denoise),
+            ("binarize", &mut self.binarize),
+            ("auto_preprocess", &mut self.auto_preprocess),
+            ("fix_japanese", &mut self.fix_japanese),
+        ] {
             if let Some(on) = v[key].as_bool() {
                 *flag = on;
             }
@@ -158,6 +171,8 @@ impl OcrDraft {
             "deskew": self.deskew,
             "denoise": self.denoise,
             "binarize": self.binarize,
+            "auto_preprocess": self.auto_preprocess,
+            "fix_japanese": self.fix_japanese,
             "skip_text_files": self.skip_text_files,
             "skip_text_pages": self.skip_text_pages,
             "force_ocr": self.force_ocr,
@@ -346,6 +361,10 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
         ui.add(crate::widgets::checkbox(&mut d.deskew, tl!("Straighten skewed text lines")));
         ui.add(crate::widgets::checkbox(&mut d.denoise, tl!("Remove scan speckle")));
         ui.add(crate::widgets::checkbox(&mut d.binarize, tl!("Black and white (binarize)")));
+        ui.add(crate::widgets::checkbox(&mut d.auto_preprocess, tl!("Straighten only the pages that are tilted or turned")))
+            .on_hover_text(tl!("Each page is checked first; a straight, upright page is read as it is"));
+        ui.add(crate::widgets::checkbox(&mut d.fix_japanese, tl!("Correct look-alike Japanese characters")))
+            .on_hover_text(tl!("Fixes only what the neighbouring characters rule out: small っ/ゃ/ゅ/ょ, ー and 一, katakana look-alikes, digits"));
     });
     group(ui, "Skip", &mut |ui| {
         ui.add(crate::widgets::checkbox(&mut d.skip_text_pages, tl!("Skip pages that already have text")))

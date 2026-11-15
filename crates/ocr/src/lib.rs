@@ -22,6 +22,7 @@
 
 pub mod blocks;
 pub mod confidence;
+pub mod ja_fix;
 pub mod merge;
 mod ocrs;
 pub mod preprocess;

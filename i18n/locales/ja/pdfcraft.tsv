@@ -3924,6 +3924,10 @@ document scrollbar width	Wide	太い
 	Background removal	背景の除去
 	Bitmap images	ビットマップ画像
 	Black and white (binarize)	白黒（2 値化）
+	Straighten only the pages that are tilted or turned	傾いている・向きが違うページだけ補正
+	Each page is checked first; a straight, upright page is read as it is	先にページごとに調べ、まっすぐなページはそのまま読み取ります
+	Correct look-alike Japanese characters	似た形の日本語の文字を補正
+	Fixes only what the neighbouring characters rule out: small っ/ゃ/ゅ/ょ, ー and 一, katakana look-alikes, digits	前後の文字から他に読めないものだけ直します(小さい っ/ゃ/ゅ/ょ、ーと一、カタカナに似た漢字、数字)
 	Bleed	裁ち落とし
 	Bottom-left	左下
 	Built-in	内蔵

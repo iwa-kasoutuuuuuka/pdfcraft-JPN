@@ -36,6 +36,37 @@ impl PreprocessOptions {
     }
 }
 
+/// The side, in pixels, that a page is shrunk to before it is judged by [`suggest`].
+const SUGGEST_SIDE: f64 = 1400.0;
+/// The smallest skew, in degrees, that [`suggest`] straightens: below it the rotation's
+/// resampling costs more than the tilt does.
+const SUGGEST_MIN_SKEW: f64 = 0.5;
+
+/// Turn on, for this page alone, the steps it needs: `base` plus `auto_rotate` when the page is
+/// turned a quarter turn or upside down, and `deskew` when its lines are tilted by at least half
+/// a degree. A straight, upright page gets `base` back, so it is never resampled for nothing.
+/// Denoising and binarizing are never suggested: they help some scans and hurt others, so only
+/// the user's own choice turns them on. The page is judged on a copy shrunk to at most 1400 px
+/// on a side, which keeps the check quick on a large scan.
+pub fn suggest(image: &OcrImage, base: PreprocessOptions) -> PreprocessOptions {
+    let mut options = base;
+    if options.auto_rotate && options.deskew {
+        return options;
+    }
+    let longest = f64::from(image.width.max(image.height));
+    let shrunk = if longest > SUGGEST_SIDE { resize_bilinear(image, SUGGEST_SIDE / longest).ok() } else { None };
+    let probe = shrunk.as_ref().unwrap_or(image);
+    if !options.auto_rotate && detect_orientation(probe) != 0 {
+        // A turned page's tilt can only be judged once it is upright: let deskew look again.
+        options.auto_rotate = true;
+        options.deskew = true;
+    }
+    if !options.deskew && estimate_skew(probe).is_some_and(|angle| angle.abs() >= SUGGEST_MIN_SKEW) {
+        options.deskew = true;
+    }
+    options
+}
+
 /// A preprocessed raster: the image to recognize, the exact way back to the input raster, and
 /// the resolution the image now stands for.
 #[derive(Debug)]
@@ -969,5 +1000,54 @@ mod tests {
                 assert!((sy - expected).abs() < 2.0, "{degrees}° x={x}: ({sx}, {sy}), the source line is at {expected}");
             }
         }
+    }
+
+    /// A straight, upright page gets exactly the options it came with: nothing to resample.
+    #[test]
+    fn suggest_leaves_a_straight_page_alone() {
+        let base = PreprocessOptions::default();
+        assert_eq!(suggest(&sheared(0.0), base), base);
+        assert_eq!(suggest(&white(200, 200), base), base);
+        assert_eq!(suggest(&l_line(), base), base, "an upright page is not turned");
+    }
+
+    /// A tilted page turns deskew on, in either direction; a tilt under half a degree does not.
+    #[test]
+    fn suggest_straightens_a_tilted_page_and_only_that() {
+        for degrees in [3.0, -3.0] {
+            let got = suggest(&sheared(degrees), PreprocessOptions::default());
+            assert_eq!(got, PreprocessOptions { deskew: true, ..Default::default() }, "{degrees}°");
+        }
+        assert!(!suggest(&sheared(0.25), PreprocessOptions::default()).deskew, "a quarter degree is not worth a rotation");
+    }
+
+    /// A page on its side turns the rotation on (with deskew, to judge the tilt once upright),
+    /// and the user's own choices are kept: nothing is ever switched off, and denoise and
+    /// binarize are never switched on.
+    #[test]
+    fn suggest_turns_a_sideways_page_and_keeps_the_users_choices() {
+        let got = suggest(&rotated(1), PreprocessOptions::default());
+        assert!(got.auto_rotate && got.deskew, "{got:?}");
+        assert!(!got.denoise && !got.binarize);
+        let mine = PreprocessOptions { denoise: true, binarize: true, ..Default::default() };
+        let got = suggest(&sheared(3.0), mine);
+        assert!(got.denoise && got.binarize && got.deskew);
+        let all = PreprocessOptions { auto_rotate: true, deskew: true, denoise: false, binarize: false };
+        assert_eq!(suggest(&rotated(2), all), all);
+    }
+
+    /// A large scan is judged on a shrunk copy and still gets the right answer.
+    #[test]
+    fn suggest_judges_a_large_page_on_a_shrunk_copy() {
+        let (w, h) = (3000u32, 2400u32);
+        let mut img = white(w, h);
+        let slope = 3f64.to_radians().tan();
+        for base in (200..2200u32).step_by(200) {
+            for x in 100..2900u32 {
+                let y = (f64::from(base) + (f64::from(x) - 1500.0) * slope).round().clamp(0.0, f64::from(h - 40)) as u32;
+                fill(&mut img, x, y, 1, 30);
+            }
+        }
+        assert!(suggest(&img, PreprocessOptions::default()).deskew);
     }
 }
