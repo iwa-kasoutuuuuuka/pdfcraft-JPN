@@ -12,6 +12,7 @@
 - **表記ゆれを無視した検索**(全角/半角・ひらがな/カタカナ・旧字体)
 - **個人情報の自動検出と墨消し**(マイナンバー・電話番号・郵便番号・メール)
 - OCR 結果の **Word / テキスト書き出し**、**フォルダー一括 OCR**
+- OCR の精度向上: ページごとの傾き・向きの自動補正、小さい「っ・ゃ」や「ー/一」など似た文字の自動訂正(設定でオフにできます)
 - **ダークモード**(Ctrl+Shift+D で切り替え)
 - **Claude Code・Antigravity** などの AI エージェントから操作(MCP)
 
@@ -403,6 +404,7 @@ pdfcraft-cli run --script steps.json --root .  # 複数の手順をまとめて�
 
 - `page_add_text` / `content_update` の `vertical` で縦書きを指定します。
 - `ocr_recognize` の `engine: "windows"` と `language: "ja"` で日本語 OCR を実行します。
+- 既定で `auto_preprocess`(ページごとの傾き補正)と `fix_japanese`(似た文字の訂正)がオンです。元の読み取りのまま使いたいときは、`ocr_recognize` などの引数で `false` にします。
 
 ## 16. 配布パッケージと自動更新
 
