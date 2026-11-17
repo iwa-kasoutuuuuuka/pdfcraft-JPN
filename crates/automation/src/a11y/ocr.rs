@@ -52,6 +52,8 @@ impl Automation {
             ("deskew", &mut settings.deskew),
             ("denoise", &mut settings.denoise),
             ("binarize", &mut settings.binarize),
+            ("auto_preprocess", &mut settings.auto_preprocess),
+            ("fix_japanese", &mut settings.fix_japanese),
         ] {
             if let Some(on) = a.opt_bool(key)? {
                 *flag = on;

@@ -144,6 +144,14 @@ pub struct OcrSettings {
     pub denoise: bool,
     /// Preprocessing: Sauvola binarization.
     pub binarize: bool,
+    /// Preprocessing: look at each page and straighten it (and turn it upright) only when it
+    /// needs it, on top of the four steps above. A straight, upright page is read as rendered.
+    /// Denoise and binarize are never chosen for you.
+    pub auto_preprocess: bool,
+    /// Japanese text: put right the characters an engine confuses where the neighbours leave no
+    /// other reading (small っ/ゃ/ゅ/ょ, 一 and ー, katakana look-alikes, digits). Text without
+    /// Japanese is untouched.
+    pub fix_japanese: bool,
     /// What to produce (searchable text layer, or a new editable document).
     pub output_mode: OutputMode,
     /// Restrict recognition to this rectangle of the rendered page image, in pixels
@@ -211,6 +219,8 @@ impl Default for OcrSettings {
             deskew: false,
             denoise: false,
             binarize: false,
+            auto_preprocess: true,
+            fix_japanese: true,
             output_mode: OutputMode::default(),
             region: None,
             low_confidence_threshold: 60.0,
@@ -979,17 +989,14 @@ impl OcrSteps {
         // back in processed coordinates and are mapped to the ORIGINAL raster's before
         // placement. The render dpi is the real one (pixels per point × 72), never a
         // fixed value.
-        let pre = pdfcraft_ocr::preprocess::preprocess(
-            image,
-            scale * 72.0,
-            &pdfcraft_ocr::preprocess::PreprocessOptions {
-                auto_rotate: settings.auto_rotate,
-                deskew: settings.deskew,
-                denoise: settings.denoise,
-                binarize: settings.binarize,
-            },
-        )
-        .map_err(|e| skip(&e.to_string()))?;
+        let chosen = pdfcraft_ocr::preprocess::PreprocessOptions {
+            auto_rotate: settings.auto_rotate,
+            deskew: settings.deskew,
+            denoise: settings.denoise,
+            binarize: settings.binarize,
+        };
+        let steps = if settings.auto_preprocess { pdfcraft_ocr::preprocess::suggest(&image, chosen) } else { chosen };
+        let pre = pdfcraft_ocr::preprocess::preprocess(image, scale * 72.0, &steps).map_err(|e| skip(&e.to_string()))?;
         Ok(OcrShot {
             page,
             image: Some(pre.image),
@@ -1001,6 +1008,7 @@ impl OcrSteps {
             strategy: settings.strategy,
             options: pdfcraft_ocr::RecognizeOptions { language: settings.language.clone() },
             output_mode: settings.output_mode,
+            fix_japanese: settings.fix_japanese,
         })
     }
 }
@@ -1024,6 +1032,7 @@ pub struct OcrShot {
     strategy: MergeStrategy,
     options: pdfcraft_ocr::RecognizeOptions,
     output_mode: OutputMode,
+    fix_japanese: bool,
 }
 
 impl OcrShot {
@@ -1061,6 +1070,8 @@ impl OcrShot {
             Ok(o) => o,
             Err(e) => return OcrPage { page, words: Vec::new(), already_on_page: 0, skipped: Some(e), notes: Vec::new() },
         };
+        let mut outcome = outcome;
+        let corrected = if self.fix_japanese { pdfcraft_ocr::ja_fix::fix_japanese(&mut outcome.lines).characters } else { 0 };
         let (info, inverse, offset, scale) = (&self.info, self.inverse, self.offset, self.pixels_per_point);
         let to_user = |x: f32, y: f32| {
             // processed pixels → original raster pixels (the exact inverse) → past the
@@ -1090,6 +1101,9 @@ impl OcrShot {
         });
         let words = fresh.into_iter().map(|w| PlacedWord::place(w, to_user)).collect::<Vec<_>>();
         let mut notes = outcome.notes;
+        if corrected > 0 {
+            notes.push(format!("{corrected} Japanese characters were corrected from their neighbours (small kana, ー/一, digits)"));
+        }
         // Only visible editable output needs display glyphs. Searchable output preserves
         // every Unicode character with empty Type3 programs and ToUnicode maps.
         if self.output_mode == OutputMode::EditableText && !words.is_empty() {
@@ -1893,6 +1907,62 @@ mod tests {
     fn fake_recognizers() -> (Recognizers, Arc<Fake>) {
         let fake = Arc::new(Fake::new());
         (Recognizers { primary: fake.clone(), secondary: None }, fake)
+    }
+
+    /// An engine that reads the same words from anything, one line each.
+    struct Says(Vec<&'static str>);
+
+    impl Recognizer for Says {
+        fn id(&self) -> &'static str {
+            "says"
+        }
+        fn available(&self) -> bool {
+            true
+        }
+        fn languages(&self) -> Vec<(String, String)> {
+            vec![("ja".into(), "Japanese".into())]
+        }
+        fn recognize(&self, _image: &pdfcraft_ocr::OcrImage, _options: &pdfcraft_ocr::RecognizeOptions) -> Result<Vec<pdfcraft_ocr::Line>, OcrError> {
+            Ok(self
+                .0
+                .iter()
+                .enumerate()
+                .map(|(i, t)| pdfcraft_ocr::Line {
+                    words: vec![
+                        pdfcraft_ocr::Word::new(*t, [10.0, 10.0 + 30.0 * i as f32, 300.0, 30.0 + 30.0 * i as f32], "says").with_confidence(90.0),
+                    ],
+                })
+                .collect())
+        }
+    }
+
+    fn read_with(says: &[&'static str], settings: OcrSettings) -> OcrPage {
+        let s = Session::new();
+        let bytes = s.create_from_text("t", "Some text").unwrap();
+        let r = Recognizers { primary: Arc::new(Says(says.to_vec())), secondary: None };
+        let settings = OcrSettings { force_ocr: true, ..settings };
+        let out = recognize_file("t.pdf", bytes, None, settings, &r, |_, _| true).unwrap();
+        out.pages.into_iter().next().unwrap()
+    }
+
+    /// The Japanese check changes only what the neighbours rule out, reports how many, and can be
+    /// switched off.
+    #[test]
+    fn japanese_look_alikes_are_corrected_and_counted() {
+        let page = read_with(&["見当がっぬ。", "コ一ヒ一を飲む", "がっかり"], OcrSettings::default());
+        let texts: Vec<&str> = page.words.iter().map(|w| w.text.as_str()).collect();
+        assert_eq!(texts, ["見当がつぬ。", "コーヒーを飲む", "がっかり"]);
+        assert!(page.notes.iter().any(|n| n.starts_with("3 Japanese characters")), "{:?}", page.notes);
+    }
+
+    #[test]
+    fn the_japanese_check_can_be_turned_off_and_leaves_other_text_alone() {
+        let off = read_with(&["見当がっぬ。"], OcrSettings { fix_japanese: false, ..Default::default() });
+        assert_eq!(off.words[0].text, "見当がっぬ。");
+        assert!(off.notes.is_empty());
+        let latin = read_with(&["Total 2O24"], OcrSettings::default());
+        assert_eq!(latin.words[0].text, "Total 2O24");
+        assert!(latin.notes.is_empty());
     }
 
     /// Skip-files: a file that already has text is passed over entirely — the engine never

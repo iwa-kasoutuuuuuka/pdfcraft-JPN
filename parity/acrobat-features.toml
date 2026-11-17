@@ -10551,3 +10551,15 @@ commands = ["edit.convert_dates"]
 tools = ["dates_find_ja", "dates_convert_ja"]
 evidence = ["crates/engine/src/era_dates/tests.rs::era_boundaries_are_exact", "crates/engine/src/era_dates/tests.rs::phone_numbers_and_digit_runs_are_not_dates", "crates/engine/src/era_dates/tests.rs::full_width_digits_are_read_and_kept", "crates/automation/tests/it/era_dates.rs::dates_find_ja_lists_dates_in_page_text_comments_and_fields", "crates/automation/tests/it/era_dates.rs::dates_convert_ja_replaces_page_text_comments_and_fields_in_one_undo_step", "crates/ui-egui/tests/it/era_dates.rs::convert_dates_dialog_converts_the_checked_dates_to_the_chosen_calendar"]
 notes = "PdfCraft-JPN addition, not an Acrobat feature. Finds era dates (令和6年5月1日, 令和元年, R6.5.1, H31/4/30) and Western dates (2024年5月1日, 2024/5/1, 2024-05-01, 2024.5.1) in page text, comment text and text field values, full-width digits included; phone numbers and digit runs are not dates. Era days are exact (平成31年5月1日 is flagged, never converted). Converts in kanji style with 元年 as one undo step. Page text goes through the Edit text line rewrite, tried on a copy first; a line the rewrite refuses or that would not read back is reported and left unchanged. Fields with a date or number format script are left alone."
+
+[[feature]]
+id = "ocr.japanese-accuracy"
+title = "Japanese OCR accuracy: look-alike character correction and per-page straightening"
+area = "I"
+tier = "P2"
+milestone = "M10"
+status = "shipped"
+commands = ["ocr.recognize"]
+tools = ["ocr_recognize", "ocr_words"]
+evidence = ["crates/ocr/src/ja_fix.rs::a_small_tsu_before_a_vowel_or_na_ma_ra_row_kana_is_tsu", "crates/ocr/src/ja_fix.rs::a_small_tsu_that_doubles_a_consonant_is_left_alone", "crates/ocr/src/ja_fix.rs::the_long_vowel_mark_and_katakana_lookalikes_inside_katakana_words", "crates/ocr/src/ja_fix.rs::kanji_that_are_really_kanji_stay_kanji", "crates/ocr/src/preprocess.rs::suggest_leaves_a_straight_page_alone", "crates/ocr/src/preprocess.rs::suggest_straightens_a_tilted_page_and_only_that", "crates/engine/src/ocr.rs::japanese_look_alikes_are_corrected_and_counted", "crates/engine/src/ocr.rs::the_japanese_check_can_be_turned_off_and_leaves_other_text_alone"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. fix_japanese (default on) corrects only what the neighbouring characters rule out: a small っ/ッ before a kana it cannot double (見当がっぬ), ゃゅょ after a kana that cannot take them, 一 and the katakana look-alikes 力 工 夕 二 八 口 between katakana (コ一ヒ一), ー between two kanji, and O/o/l/I between two digits; text without Japanese is untouched, a wrapped line is judged by the next line's first character, and the page's notes say how many characters changed. auto_preprocess (default on) checks each page, on a copy shrunk to 1400 px, and turns on straightening only when it is tilted by half a degree or more or turned a quarter turn or upside down; denoise and binarize are never chosen for you. Measured on one clean synthetic scan only (Windows OCR read it the same at 100 to 600 dpi, with one っ for つ error); the gain on damaged scans is not measured."
