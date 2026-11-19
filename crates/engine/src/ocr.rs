@@ -861,6 +861,32 @@ fn editable_word(w: &PlacedWord, info: &PageInfo) -> PlacedWord {
     }
 }
 
+/// How many pages are recognised at once: the engines are mostly one process or one thread per
+/// page, so several pages in flight use the machine. `PDFCRAFT_OCR_THREADS` overrides it (1 reads
+/// strictly one page at a time); never more than the pages there are.
+pub fn ocr_workers(pages: usize) -> usize {
+    let wanted = std::env::var("PDFCRAFT_OCR_THREADS").ok().and_then(|v| v.trim().parse::<usize>().ok()).filter(|n| *n >= 1);
+    let auto = std::thread::available_parallelism().map_or(1, std::num::NonZeroUsize::get).clamp(1, MAX_OCR_WORKERS);
+    wanted.unwrap_or(auto).min(MAX_OCR_WORKERS).min(pages.max(1))
+}
+
+const MAX_OCR_WORKERS: usize = 4;
+
+/// [`OcrShot::read`] that turns an engine's panic into a skipped page, so one bad page never
+/// takes the other readers (or the app) down.
+fn read_guarded(shot: &OcrShot, recognizers: &Recognizers) -> OcrPage {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| shot.read(recognizers))).unwrap_or_else(|payload| {
+        let why = payload.downcast_ref::<&str>().map(|s| (*s).to_string()).or_else(|| payload.downcast_ref::<String>().cloned()).unwrap_or_default();
+        OcrPage {
+            page: shot.page,
+            words: Vec::new(),
+            already_on_page: 0,
+            skipped: Some(format!("the text engine stopped unexpectedly on this page: {why}")),
+            notes: Vec::new(),
+        }
+    })
+}
+
 impl OcrJob {
     /// The pixels-per-point this job renders `page` at (the real render dpi is this times 72).
     /// The Verify screen uses it to express a region picked on its own preview in the pixels
@@ -888,20 +914,93 @@ impl OcrJob {
     }
 
     /// Read the pages. `progress(done, total)` is called before each page; returning `false`
-    /// stops (the pages read so far are returned).
+    /// stops (the pages read so far are returned). Pages are rendered one after another on the
+    /// calling thread and recognised on up to [`ocr_workers`] threads at once; the result is in
+    /// page order whatever order the engines finish in.
     pub fn run(self, recognizers: &Recognizers, mut progress: impl FnMut(usize, usize) -> bool) -> Vec<OcrPage> {
         let total = self.pages.len();
+        let workers = ocr_workers(total);
         let mut steps = self.steps();
-        let mut out = Vec::new();
-        while progress(steps.done(), total) {
-            match steps.next_page() {
-                None => break,
-                Some(Err(skipped)) => out.push(skipped),
-                Some(Ok(shot)) => out.push(shot.read(recognizers)),
+        // (position in the job, the page), put back in order at the end.
+        let mut out: Vec<(usize, OcrPage)> = Vec::new();
+        if workers <= 1 {
+            let mut n = 0;
+            while progress(steps.done(), total) {
+                match steps.next_page() {
+                    None => break,
+                    Some(Err(skipped)) => out.push((n, skipped)),
+                    Some(Ok(shot)) => out.push((n, read_guarded(&shot, recognizers))),
+                }
+                n += 1;
             }
+        } else {
+            // A bounded queue keeps a few rendered pages at most in memory ahead of the readers.
+            let (tx, rx) = std::sync::mpsc::sync_channel::<(usize, OcrShot)>(1);
+            let rx = Arc::new(std::sync::Mutex::new(rx));
+            let (done_tx, done_rx) = std::sync::mpsc::channel::<(usize, OcrPage)>();
+            let stop = std::sync::atomic::AtomicBool::new(false);
+            std::thread::scope(|scope| {
+                for _ in 0..workers {
+                    let (rx, done_tx, stop) = (rx.clone(), done_tx.clone(), &stop);
+                    scope.spawn(move || {
+                        loop {
+                            // Take the next page; the lock is held only while waiting for it.
+                            let next = rx.lock().ok().and_then(|q| q.recv().ok());
+                            let Some((n, shot)) = next else { break };
+                            // After a stop the pages still queued are dropped, not read.
+                            if stop.load(std::sync::atomic::Ordering::SeqCst) {
+                                continue;
+                            }
+                            if done_tx.send((n, read_guarded(&shot, recognizers))).is_err() {
+                                break;
+                            }
+                        }
+                    });
+                }
+                drop(done_tx);
+                drop(rx);
+                let mut n = 0;
+                'pages: loop {
+                    out.extend(done_rx.try_iter());
+                    if !progress(out.len(), total) {
+                        break;
+                    }
+                    let mut item = match steps.next_page() {
+                        None => break,
+                        Some(Err(skipped)) => {
+                            out.push((n, skipped));
+                            n += 1;
+                            continue;
+                        }
+                        Some(Ok(shot)) => (n, shot),
+                    };
+                    n += 1;
+                    // Hand the page over; while every reader is busy keep the progress and the
+                    // stop button live.
+                    loop {
+                        match tx.try_send(item) {
+                            Ok(()) => break,
+                            Err(std::sync::mpsc::TrySendError::Disconnected(_)) => break 'pages,
+                            Err(std::sync::mpsc::TrySendError::Full(back)) => {
+                                item = back;
+                                out.extend(done_rx.try_iter());
+                                if !progress(out.len(), total) {
+                                    break 'pages;
+                                }
+                                std::thread::sleep(std::time::Duration::from_millis(20));
+                            }
+                        }
+                    }
+                }
+                stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                // No more pages: the readers finish the page in hand and stop.
+                drop(tx);
+                out.extend(done_rx.iter());
+            });
         }
         progress(total, total);
-        out
+        out.sort_by_key(|(n, _)| *n);
+        out.into_iter().map(|(_, page)| page).collect()
     }
 
     /// Read the pages one at a time, preparing each page's image and recognising it separately:
@@ -1934,6 +2033,74 @@ mod tests {
                 })
                 .collect())
         }
+    }
+    /// An engine that sleeps a little and notes how many pages it is reading at the same time.
+    struct Slow {
+        now: std::sync::atomic::AtomicUsize,
+        most: std::sync::atomic::AtomicUsize,
+    }
+
+    impl Recognizer for Slow {
+        fn id(&self) -> &'static str {
+            "slow"
+        }
+        fn available(&self) -> bool {
+            true
+        }
+        fn languages(&self) -> Vec<(String, String)> {
+            Vec::new()
+        }
+        fn recognize(&self, _image: &pdfcraft_ocr::OcrImage, _options: &pdfcraft_ocr::RecognizeOptions) -> Result<Vec<pdfcraft_ocr::Line>, OcrError> {
+            use std::sync::atomic::Ordering::SeqCst;
+            let n = self.now.fetch_add(1, SeqCst) + 1;
+            self.most.fetch_max(n, SeqCst);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            self.now.fetch_sub(1, SeqCst);
+            Ok(vec![pdfcraft_ocr::Line { words: vec![pdfcraft_ocr::Word::new("page", [10.0, 10.0, 100.0, 30.0], "slow").with_confidence(90.0)] }])
+        }
+    }
+
+    /// Several pages are read at once, none is lost, and they come back in page order.
+    #[test]
+    fn pages_are_read_in_parallel_and_come_back_in_order() {
+        let s = Session::new();
+        let text = (0..400).map(|i| format!("line {i}")).collect::<Vec<_>>().join(
+            "
+",
+        );
+        let bytes = s.create_from_text("t", &text).unwrap();
+        let slow = Arc::new(Slow { now: Default::default(), most: Default::default() });
+        let r = Recognizers { primary: slow.clone(), secondary: None };
+        let settings = OcrSettings { force_ocr: true, ..Default::default() };
+        let mut seen = Vec::new();
+        let out = recognize_file("t.pdf", bytes, None, settings, &r, |done, total| {
+            seen.push((done, total));
+            true
+        })
+        .unwrap();
+        let pages: Vec<usize> = out.pages.iter().map(|p| p.page).collect();
+        assert!(pages.len() >= 4, "{pages:?}");
+        assert!(pages.windows(2).all(|w| w[0] < w[1]), "{pages:?}");
+        assert!(out.pages.iter().all(|p| p.skipped.is_none() && p.words.len() == 1));
+        assert_eq!(seen.last().map(|(d, t)| d == t), Some(true));
+        if ocr_workers(pages.len()) > 1 {
+            assert!(slow.most.load(std::sync::atomic::Ordering::SeqCst) > 1, "the pages were read one at a time");
+        }
+    }
+
+    /// Stopping from the progress callback ends the job without hanging, with fewer pages.
+    #[test]
+    fn stopping_a_parallel_job_returns_what_was_read() {
+        let s = Session::new();
+        let text = (0..400).map(|i| format!("line {i}")).collect::<Vec<_>>().join(
+            "
+",
+        );
+        let bytes = s.create_from_text("t", &text).unwrap();
+        let r = Recognizers { primary: Arc::new(Slow { now: Default::default(), most: Default::default() }), secondary: None };
+        let settings = OcrSettings { force_ocr: true, ..Default::default() };
+        let out = recognize_file("t.pdf", bytes, None, settings, &r, |done, _| done < 2).unwrap();
+        assert!(out.pages.len() <= 6, "{}", out.pages.len());
     }
 
     fn read_with(says: &[&'static str], settings: OcrSettings) -> OcrPage {

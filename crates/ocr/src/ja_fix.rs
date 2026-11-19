@@ -95,8 +95,16 @@ fn replacement(c: char, prev: Option<char>, next: Option<char>) -> Option<char> 
         // 一 and the katakana look-alikes inside a katakana word.
         // 一 ends a katakana word too (コーヒー); before a kanji it is the numeral (コーヒー一杯).
         // After a katakana word 一 is ー only when the word goes on (katakana) or ends (nothing, a
-        // mark or a space); before hiragana it is the numeral (リンゴ一つ).
-        '一' if is_kata_word(prev) && next.is_none_or(|n| (is_katakana_letter(n) && !matches!(n, 'ヵ' | 'ヶ')) || n == 'ー' || is_closing(n)) => {
+        // mark, a space or a particle such as を); before a counter ending (一つ, 一か月, 一ずつ) it is the
+        // numeral (リンゴ一つ).
+        '一' if is_kata_word(prev)
+            && next.is_none_or(|n| {
+                (is_katakana_letter(n) && !matches!(n, 'ヵ' | 'ヶ'))
+                    || n == 'ー'
+                    || is_closing(n)
+                    || (is_hiragana(n) && !matches!(n, 'つ' | 'か' | 'ず'))
+            }) =>
+        {
             Some('ー')
         }
         '力' if is_kata_word(prev) && is_kata_word(next) => Some('カ'),
@@ -266,6 +274,7 @@ mod tests {
             "セット一つ",
             "ページ一つ目",
             "ボーナス一ヶ月",
+            "ボーナス一か月",
             "一・二・三",
             "プレゼン力アップ",
             "ホテル口コミ",
@@ -279,6 +288,7 @@ mod tests {
         assert_eq!(fix(&[&["えっ"], &["おはよう"]]).1, 0);
         // The genuine misreadings are still corrected.
         assert_eq!(fix(&[&["コーヒ一"]]).0, vec!["コーヒー".to_string()]);
+        assert_eq!(fix(&[&["コーヒ一を飲む"]]).0, vec!["コーヒーを飲む".to_string()]);
         assert_eq!(fix(&[&["二ー三"]]).0, vec!["二一三".to_string()]);
     }
 
