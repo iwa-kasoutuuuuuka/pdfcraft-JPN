@@ -10563,3 +10563,16 @@ commands = ["ocr.recognize"]
 tools = ["ocr_recognize", "ocr_words"]
 evidence = ["crates/ocr/src/ja_fix.rs::a_small_tsu_before_a_vowel_or_na_ma_ra_row_kana_is_tsu", "crates/ocr/src/ja_fix.rs::a_small_tsu_that_doubles_a_consonant_is_left_alone", "crates/ocr/src/ja_fix.rs::the_long_vowel_mark_and_katakana_lookalikes_inside_katakana_words", "crates/ocr/src/ja_fix.rs::kanji_that_are_really_kanji_stay_kanji", "crates/ocr/src/preprocess.rs::suggest_leaves_a_straight_page_alone", "crates/ocr/src/preprocess.rs::suggest_straightens_a_tilted_page_and_only_that", "crates/engine/src/ocr.rs::japanese_look_alikes_are_corrected_and_counted", "crates/engine/src/ocr.rs::the_japanese_check_can_be_turned_off_and_leaves_other_text_alone"]
 notes = "PdfCraft-JPN addition, not an Acrobat feature. fix_japanese (default on) corrects only what the neighbouring characters rule out: a small っ/ッ before a kana it cannot double (見当がっぬ), ゃゅょ after a kana that cannot take them, 一 and the katakana look-alikes 力 工 夕 二 八 口 between katakana (コ一ヒ一), ー between two kanji, and O/o/l/I between two digits; text without Japanese is untouched, a wrapped line is judged by the next line's first character, and the page's notes say how many characters changed. auto_preprocess (default on) checks each page, on a copy shrunk to 1400 px, and turns on straightening only when it is tilted by half a degree or more or turned a quarter turn or upside down; denoise and binarize are never chosen for you. Measured on one clean synthetic scan only (Windows OCR read it the same at 100 to 600 dpi, with one っ for つ error); the gain on damaged scans is not measured."
+
+
+[[feature]]
+id = "ocr.parallel-pages"
+title = "OCR reads several pages at once (up to 4), results in page order"
+area = "I"
+tier = "P2"
+milestone = "M10"
+status = "shipped"
+commands = ["ocr.recognize"]
+tools = ["ocr_recognize", "ocr_words"]
+evidence = ["crates/engine/src/ocr.rs::pages_are_read_in_parallel_and_come_back_in_order", "crates/engine/src/ocr.rs::stopping_a_parallel_job_returns_what_was_read"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. OcrJob::run renders pages one after another and recognises up to PDFCRAFT_OCR_THREADS (default: the cores, at most 4) at once; a stop drops the queued pages, progress counts finished pages, an engine panic skips that page with its message, tesseract runs with OMP_THREAD_LIMIT=1. The speed-up was not measured on a real scan."

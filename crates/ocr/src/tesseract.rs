@@ -381,6 +381,9 @@ impl TesseractCli {
                 }))
                 .env("TMP", &dir.path)
                 .env("TEMP", &dir.path)
+                // One thread per process: pages are read side by side, and tesseract's own
+                // OpenMP threads would fight over the cores.
+                .env("OMP_THREAD_LIMIT", "1")
                 .spawn()
                 .map_err(|e| OcrError::NoTesseract(format!("{} could not start: {e}", self.program.display())))?;
         let started = Instant::now();
