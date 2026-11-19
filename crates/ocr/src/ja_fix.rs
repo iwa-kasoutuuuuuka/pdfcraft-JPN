@@ -49,7 +49,8 @@ pub fn fix_japanese(lines: &mut [Line]) -> Fixed {
         for i in 0..chars.len() {
             let prev = i.checked_sub(1).and_then(|p| chars.get(p)).copied();
             let next = chars.get(i + 1).copied();
-            if let Some(c) = chars.get(i).copied().and_then(|c| replacement(c, prev, next))
+            let tail = chars.get(i + 1..).unwrap_or_default();
+            if let Some(c) = chars.get(i).copied().filter(|c| !compound_exception(*c, tail)).and_then(|c| replacement(c, prev, next))
                 && let Some(o) = out.get_mut(i)
             {
                 *o = c;
@@ -84,22 +85,28 @@ fn set_word_char(word: &mut Word, i: usize, c: char) {
 fn replacement(c: char, prev: Option<char>, next: Option<char>) -> Option<char> {
     match c {
         // っ before a kana it can never double: a vowel, な行, ま行, や行, ら行, わ行, ん.
-        'っ' if next.is_some_and(cannot_follow_small_tsu_hira) => Some('つ'),
+        'っ' if next.is_some_and(cannot_follow_small_tsu_hira) && !prev.is_some_and(|p| matches!(p, 'あ' | 'い' | 'う' | 'え' | 'お' | 'わ')) => {
+            Some('つ')
+        }
         'ッ' if next.is_some_and(cannot_follow_small_tsu_kata) => Some('ツ'),
         // ゃゅょ only follow an い-row kana (and a few loanword kana).
         'ゃ' | 'ゅ' | 'ょ' if prev.is_some_and(is_hiragana) && !prev.is_some_and(takes_small_ya_hira) => Some(big_ya(c)),
         'ャ' | 'ュ' | 'ョ' if prev.is_some_and(is_katakana_letter) && !prev.is_some_and(takes_small_ya_kata) => Some(big_ya(c)),
         // 一 and the katakana look-alikes inside a katakana word.
         // 一 ends a katakana word too (コーヒー); before a kanji it is the numeral (コーヒー一杯).
-        '一' if is_katakana(prev) && (is_katakana(next) || next.is_none_or(|n| !is_kanji(n) && !is_digit(n))) => Some('ー'),
-        '力' if is_katakana(prev) && is_katakana(next) => Some('カ'),
-        '工' if is_katakana(prev) && is_katakana(next) => Some('エ'),
-        '夕' if is_katakana(prev) && is_katakana(next) => Some('タ'),
-        '二' if is_katakana(prev) && is_katakana(next) => Some('ニ'),
-        '八' if is_katakana(prev) && is_katakana(next) => Some('ハ'),
-        '口' if is_katakana(prev) && is_katakana(next) => Some('ロ'),
-        // ー between two kanji can only be 一.
-        'ー' if prev.is_some_and(is_kanji) && next.is_some_and(is_kanji) => Some('一'),
+        // After a katakana word 一 is ー only when the word goes on (katakana) or ends (nothing, a
+        // mark or a space); before hiragana it is the numeral (リンゴ一つ).
+        '一' if is_kata_word(prev) && next.is_none_or(|n| (is_katakana_letter(n) && !matches!(n, 'ヵ' | 'ヶ')) || n == 'ー' || is_closing(n)) => {
+            Some('ー')
+        }
+        '力' if is_kata_word(prev) && is_kata_word(next) => Some('カ'),
+        '工' if is_kata_word(prev) && is_kata_word(next) => Some('エ'),
+        '夕' if is_kata_word(prev) && is_kata_word(next) => Some('タ'),
+        '二' if is_kata_word(prev) && is_kata_word(next) => Some('ニ'),
+        '八' if is_kata_word(prev) && is_kata_word(next) => Some('ハ'),
+        '口' if is_kata_word(prev) && is_kata_word(next) => Some('ロ'),
+        // ー between a kanji numeral and a kanji is 一 (二ー三); 東京ー大阪 is a dash, left alone.
+        'ー' if prev.is_some_and(|p| is_kanji_numeral(p) || p == '第') && next.is_some_and(is_kanji) => Some('一'),
         // A digit-like letter between two digits.
         'O' | 'o' if prev.is_some_and(is_digit) && next.is_some_and(is_digit) => Some('0'),
         'l' | 'I' if prev.is_some_and(is_digit) && next.is_some_and(is_digit) => Some('1'),
@@ -202,9 +209,28 @@ fn is_katakana_letter(c: char) -> bool {
     ('\u{30A1}'..='\u{30FA}').contains(&c)
 }
 
-/// Katakana, including the long-vowel mark and the middle dot, which a katakana word contains.
-fn is_katakana(c: Option<char>) -> bool {
-    c.is_some_and(|c| is_katakana_letter(c) || matches!(c, 'ー' | '・'))
+/// A character inside a katakana word: a syllable or ー (not the middle dot, which also
+/// separates kanji lists such as 一・二・三).
+fn is_kata_word(c: Option<char>) -> bool {
+    c.is_some_and(|c| is_katakana_letter(c) || c == 'ー')
+}
+
+fn is_kanji_numeral(c: char) -> bool {
+    matches!(c, '一' | '二' | '三' | '四' | '五' | '六' | '七' | '八' | '九' | '十' | '百' | '千' | '万' | '〇')
+}
+
+fn is_closing(c: char) -> bool {
+    matches!(c, '、' | '。' | '，' | '．' | ',' | '.' | ' ' | '　' | ')' | '）' | '」' | '』' | '】')
+}
+
+/// Words where the kanji is real: 力アップ (プレゼン力アップ), 口コミ (ホテル口コミ).
+fn compound_exception(c: char, tail: &[char]) -> bool {
+    let starts = |s: &str| s.chars().count() <= tail.len() && s.chars().zip(tail.iter()).all(|(a, b)| a == *b);
+    match c {
+        '力' => starts("アップ") || starts("ダウン"),
+        '口' => starts("コミ") || starts("座") || starts("ゲンカ"),
+        _ => false,
+    }
 }
 
 fn is_kanji(c: char) -> bool {
@@ -231,6 +257,29 @@ mod tests {
         let mut lines: Vec<Line> = texts.iter().map(|w| line(w)).collect();
         let n = fix_japanese(&mut lines).characters;
         (lines.iter().map(Line::text).collect(), n)
+    }
+
+    #[test]
+    fn real_words_that_look_like_a_misreading_are_left_alone() {
+        for t in [
+            "リンゴ一つ",
+            "セット一つ",
+            "ページ一つ目",
+            "ボーナス一ヶ月",
+            "一・二・三",
+            "プレゼン力アップ",
+            "ホテル口コミ",
+            "ネット口コミで",
+            "あっいけない",
+            "東京ー大阪",
+        ] {
+            assert_eq!(fix(&[&[t]]), (vec![t.to_string()], 0), "{t}");
+        }
+        // An interjection ending a line (えっ) is not turned into えつ by the next line.
+        assert_eq!(fix(&[&["えっ"], &["おはよう"]]).1, 0);
+        // The genuine misreadings are still corrected.
+        assert_eq!(fix(&[&["コーヒ一"]]).0, vec!["コーヒー".to_string()]);
+        assert_eq!(fix(&[&["二ー三"]]).0, vec!["二一三".to_string()]);
     }
 
     #[test]
