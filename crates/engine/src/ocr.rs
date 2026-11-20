@@ -963,6 +963,7 @@ impl OcrJob {
                 'pages: loop {
                     out.extend(done_rx.try_iter());
                     if !progress(out.len(), total) {
+                        stop.store(true, std::sync::atomic::Ordering::SeqCst);
                         break;
                     }
                     let mut item = match steps.next_page() {
@@ -985,6 +986,7 @@ impl OcrJob {
                                 item = back;
                                 out.extend(done_rx.try_iter());
                                 if !progress(out.len(), total) {
+                                    stop.store(true, std::sync::atomic::Ordering::SeqCst);
                                     break 'pages;
                                 }
                                 std::thread::sleep(std::time::Duration::from_millis(20));
@@ -992,8 +994,8 @@ impl OcrJob {
                         }
                     }
                 }
-                stop.store(true, std::sync::atomic::Ordering::SeqCst);
-                // No more pages: the readers finish the page in hand and stop.
+                // No more pages: the readers read what is queued (all of it, unless the job was
+                // stopped above) and stop.
                 drop(tx);
                 out.extend(done_rx.iter());
             });
@@ -1664,8 +1666,9 @@ mod tests {
         assert_eq!(EngineChoice::Tesseract.default_strategy(), MergeStrategy::PrimaryOnly);
     }
 
-    /// Settings default to today's behavior: ocrs, PrimaryOnly, no preprocessing, searchable.
-    /// (pdfcraft-JPN: the Recognize Text dialog opens on Japanese and Automatic instead.)
+    /// Settings default to ocrs, PrimaryOnly and searchable, with none of the four steps chosen
+    /// by hand; the automatic check (auto_preprocess) is on, so only a tilted or sideways page is
+    /// straightened. (pdfcraft-JPN: the Recognize Text dialog opens on Japanese and Automatic.)
     #[test]
     fn settings_default_to_the_ocrs_status_quo() {
         let s = OcrSettings::default();
@@ -1673,6 +1676,7 @@ mod tests {
         assert_eq!(s.strategy, MergeStrategy::PrimaryOnly);
         assert_eq!(s.output_mode, OutputMode::Searchable);
         assert!(!s.auto_rotate && !s.deskew && !s.denoise && !s.binarize);
+        assert!(s.auto_preprocess);
         assert_eq!(s.region, None);
         assert_eq!(s.low_confidence_threshold, 60.0);
         assert_eq!(s.tesseract_path, None, "no configured tesseract path by default: the PATH decides");
@@ -2069,6 +2073,7 @@ mod tests {
 ",
         );
         let bytes = s.create_from_text("t", &text).unwrap();
+        let bytes2 = bytes.clone();
         let slow = Arc::new(Slow { now: Default::default(), most: Default::default() });
         let r = Recognizers { primary: slow.clone(), secondary: None };
         let settings = OcrSettings { force_ocr: true, ..Default::default() };
@@ -2080,6 +2085,17 @@ mod tests {
         .unwrap();
         let pages: Vec<usize> = out.pages.iter().map(|p| p.page).collect();
         assert!(pages.len() >= 4, "{pages:?}");
+        // Every page of the file comes back, the last one included.
+        let expected = FileJob::open("t.pdf", bytes2, None, OcrSettings { force_ocr: true, ..Default::default() })
+            .ok()
+            .and_then(|o| match o {
+                Opened::Read(f) => f.job.map(|j| j.pages.len()),
+                Opened::Skipped(_) => None,
+            })
+            .unwrap_or(0);
+        assert!(expected >= 4);
+        assert_eq!(pages, (0..expected).collect::<Vec<_>>());
+        assert_eq!(seen.last().copied(), Some((expected, expected)));
         assert!(pages.windows(2).all(|w| w[0] < w[1]), "{pages:?}");
         assert!(out.pages.iter().all(|p| p.skipped.is_none() && p.words.len() == 1));
         assert_eq!(seen.last().map(|(d, t)| d == t), Some(true));
