@@ -188,12 +188,20 @@ impl PdfCraftApp {
             }
             app.export_status = Some(status);
         };
-        let filter_name = if draft.format == TextFormat::Docx { "Word" } else { "Text" };
-        let dialog = rfd::AsyncFileDialog::new()
-            .add_filter_any_case(filter_name, &[draft.format.extension()])
-            .set_title(tl!("Save the text as").to_string())
-            .set_file_name(file_name);
-        self.ask_one(crate::pickers::Ask::Save(dialog), None, start);
+        // The file picker exists only on the desktop; the web build has no save dialog here.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let filter_name = if draft.format == TextFormat::Docx { "Word" } else { "Text" };
+            let dialog = rfd::AsyncFileDialog::new()
+                .add_filter_any_case(filter_name, &[draft.format.extension()])
+                .set_title(tl!("Save the text as").to_string())
+                .set_file_name(file_name);
+            self.ask_one(crate::pickers::Ask::Save(dialog), None, start);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (file_name, start);
+        }
     }
 }
 

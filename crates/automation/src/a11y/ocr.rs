@@ -59,6 +59,12 @@ impl Automation {
                 *flag = on;
             }
         }
+        // An explicit straightening choice wins: the automatic check only ever turns deskew and
+        // auto_rotate on, so `deskew: false` would otherwise still straighten a tilted page.
+        // A caller naming either flag (and not auto_preprocess) chooses the steps by hand.
+        if a.get("auto_preprocess").is_none() && (a.get("deskew").is_some() || a.get("auto_rotate").is_some()) {
+            settings.auto_preprocess = false;
+        }
         for (key, flag) in [
             ("skip_text_pages", &mut settings.skip_text_pages),
             ("skip_text_files", &mut settings.skip_text_files),
@@ -598,6 +604,35 @@ mod shared_output_name_tests {
         let dot = shared_file_names(&targets(&["scan.pdf", "scan.pdf."]));
         assert_eq!(case.len(), if cfg!(any(windows, target_os = "macos")) { 2 } else { 0 }, "{case:?}");
         assert_eq!(dot.len(), if cfg!(windows) { 2 } else { 0 }, "{dot:?}");
+    }
+}
+
+#[cfg(test)]
+mod explicit_preprocess_tests {
+    use super::{Args, Automation, Value, json};
+
+    /// `deskew: false` or `auto_rotate: false` is the caller's choice: the automatic check must
+    /// not straighten the page anyway. Naming auto_preprocess too keeps it as given.
+    #[test]
+    fn an_explicit_straightening_flag_turns_the_automatic_check_off() {
+        let auto = Automation::new();
+        let settings = |v: Value| auto.ocr_settings(&Args(&v)).unwrap();
+        assert!(settings(json!({})).auto_preprocess, "on by default");
+        let with = |key: &str, on: bool, auto_preprocess: Option<bool>| {
+            let mut v = json!({});
+            v[key] = json!(on);
+            if let Some(p) = auto_preprocess {
+                v["auto_preprocess"] = json!(p);
+            }
+            v
+        };
+        for key in ["deskew", "auto_rotate"] {
+            let s = settings(with(key, false, None));
+            assert!(!s.auto_preprocess && !s.deskew && !s.auto_rotate, "{key}: false must win");
+            assert!(!settings(with(key, true, None)).auto_preprocess, "{key}: true chooses by hand too");
+            assert!(settings(with(key, false, Some(true))).auto_preprocess, "an explicit auto_preprocess is kept");
+        }
+        assert!(settings(json!({ "denoise": true })).auto_preprocess, "denoise is never chosen automatically, so it leaves the check on");
     }
 }
 

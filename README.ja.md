@@ -406,7 +406,7 @@ pdfcraft-cli run --script steps.json --root .  # 複数の手順をまとめて�
 
 - `page_add_text` / `content_update` の `vertical` で縦書きを指定します。
 - `ocr_recognize` の `engine: "windows"` と `language: "ja"` で日本語 OCR を実行します。
-- 既定で `auto_preprocess`(ページごとの傾き補正)と `fix_japanese`(似た文字の訂正)がオンです。元の読み取りのまま使いたいときは、`ocr_recognize` などの引数で `false` にします。
+- 既定で `auto_preprocess`(ページごとの傾き補正)と `fix_japanese`(似た文字の訂正)がオンです。元の読み取りのまま使いたいときは、`ocr_recognize` などの引数で `false` にします。`deskew` か `auto_rotate` を指定し `auto_preprocess` を指定しない呼び出しでは、`auto_preprocess` はオフになり、指定したとおりに処理します(`deskew: false` なら傾いたページもそのまま読みます)。
 - 複数ページの OCR は自動で並列に読み取ります(最大 4 ページ)。`PDFCRAFT_OCR_THREADS=1` を付けて `pdfcraft-cli` を起動すると 1 ページずつになります。
 
 ## 16. 配布パッケージと自動更新
