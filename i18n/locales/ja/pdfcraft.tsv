@@ -4638,6 +4638,9 @@ calendar weekday	We	水
 	The OCR built into Windows (no install; reads Japanese, vertical text too)	Windows 標準の OCR(インストール不要。日本語・縦書きにも対応)
 	Windows has no OCR language installed (add one in Settings, Time & language, Language & region)	Windows に OCR 用の言語が入っていません(設定 → 時刻と言語 → 言語と地域 で追加してください)
 	Windows OCR is only available on Windows	Windows OCR は Windows でのみ使えます
+	PP-OCRv5	PP-OCRv5
+	PP-OCRv5, the most accurate for Japanese, vertical text too (runs on the CPU, slower than the others)	PP-OCRv5。日本語で最も高精度で、縦書きにも対応(CPU で動作し、他より時間がかかります)
+	the PP-OCRv5 models are not installed (they are optional and not part of this installation; put PP-OCRv5_server_det.onnx, PP-OCRv5_server_rec.onnx and PP-OCRv5_server_rec.yml in the models folder, or set PDFCRAFT_MODELS to the folder that holds them)	PP-OCRv5 のモデルが入っていません(任意のモデルで、このインストールには含まれていません。PP-OCRv5_server_det.onnx・PP-OCRv5_server_rec.onnx・PP-OCRv5_server_rec.yml を models フォルダーに置くか、PDFCRAFT_MODELS にそのフォルダーを指定してください)
 	Skip	スキップ
 	Ignore Japanese variants	表記ゆれを無視（全角/半角・ひらがな/カタカナ・旧字体）
 	Find personal information	個人情報を検索

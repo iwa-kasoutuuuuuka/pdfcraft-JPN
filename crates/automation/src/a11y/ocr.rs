@@ -25,8 +25,9 @@ impl Automation {
                 "ocrs" => EngineChoice::Ocrs,
                 "tesseract" => EngineChoice::Tesseract,
                 "windows" | "windows-ocr" => EngineChoice::Windows,
+                "ppocr" | "pp-ocr" | "ppocrv5" | "pp-ocrv5" => EngineChoice::PpOcr,
                 "auto" | "automatic" | "ensemble" => EngineChoice::Auto,
-                other => return Err(ToolError::InvalidArgs(format!("unsupported engine {other:?} (ocrs, tesseract, windows or auto)"))),
+                other => return Err(ToolError::InvalidArgs(format!("unsupported engine {other:?} (ocrs, tesseract, windows, ppocr or auto)"))),
             };
         }
         settings.strategy = match a.opt_str("strategy")? {

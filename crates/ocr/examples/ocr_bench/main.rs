@@ -21,8 +21,8 @@
 //!   per-shape set-up (cuDNN's tuning, plans) is not counted: the figure is the steady state.
 //!
 //! Usage: `ocr_bench [--engines windows,tesseract,ppocrv5] [--lang ja] [--out FILE] [--images DIR]
-//! [--fonts DIR] [--models DIR] [--det-side PX] [--quick]`. `ppocrv5` is the PP-OCRv5 server
-//! probe on rten (`ppocr.rs`), reading the models `cargo xtask models --optional` fetched;
+//! [--fonts DIR] [--models DIR] [--det-side PX] [--quick]`. `ppocrv5` is the library's PP-OCRv5
+//! server engine (`pdfcraft_ocr::ppocr`, rten on the CPU), reading the models `cargo xtask models --optional` fetched;
 //! `ppocrv5-cuda` is the same pipeline on ONNX Runtime's CUDA provider, built only with
 //! `--features ort-cuda` and run with `ORT_DYLIB_PATH` set (local GPU benchmarking only). Without a font checkout or an engine it prints why and exits 0.
 //! Nothing here is shipped; it is a measuring tool.
@@ -603,7 +603,7 @@ fn parse_args() -> Res<Args> {
             "--images" => a.images = Some(PathBuf::from(value("--images")?)),
             "--fonts" => a.fonts = PathBuf::from(value("--fonts")?),
             "--models" => a.models = Some(PathBuf::from(value("--models")?)),
-            "--det-side" => a.det_side = value("--det-side")?.parse::<usize>()?.clamp(32, 4000),
+            "--det-side" => a.det_side = value("--det-side")?.parse::<usize>()?,
             "--quick" => a.quick = true,
             other => return Err(format!("unknown argument {other}").into()),
         }
@@ -632,9 +632,9 @@ fn find_engine(name: &str, args: &Args) -> Option<Box<dyn Recognizer>> {
 }
 
 fn load_ppocr(args: &Args, runtime: ppocr::Runtime, what: &str) -> Option<Box<dyn Recognizer>> {
-    match ppocr::PpOcr::find(args.models.as_ref(), args.det_side, runtime) {
-        Ok(e) => {
-            println!("ocr-bench: PP-OCRv5 server det/rec loaded with {what} in {:.1} s", e.load_seconds);
+    match ppocr::find(args.models.as_ref(), args.det_side, runtime) {
+        Ok((e, seconds)) => {
+            println!("ocr-bench: PP-OCRv5 server det/rec loaded with {what} in {seconds:.1} s (detection side {})", e.det_side());
             Some(Box::new(e))
         }
         Err(e) => {

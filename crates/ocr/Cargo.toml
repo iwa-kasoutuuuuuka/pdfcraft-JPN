@@ -19,6 +19,8 @@ ort-cuda = ["dep:ort"]
 pdfcraft-fonts = { workspace = true }
 ocrs = { version = "0.13.1", default-features = false, features = ["rten"] }
 rten = { version = "0.26.0", default-features = false, features = ["onnx_format", "rten_format"] }
+# The PP-OCRv5 engine (`ppocr`) builds its inputs as rten tensors (same version as rten, already in the tree).
+rten-tensor = "0.26.0"
 serde_json.workspace = true
 sha2 = "0.11"
 thiserror.workspace = true
@@ -34,8 +36,6 @@ ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, fea
 tempfile = "3.27"
 # Glyph outlines for the synthetic scans of `examples/ocr_bench/` (already in the tree via pdfcraft-fonts).
 skrifa = "0.44"
-# The PP-OCRv5 probe in `examples/ocr_bench/ppocr.rs` builds rten tensors (same version as rten).
-rten-tensor = "0.26.0"
 
 [target.'cfg(windows)'.dependencies]
 # Windows.Media.Ocr, the OS's built-in recogniser (safe projections only; same 0.62 line as the app).

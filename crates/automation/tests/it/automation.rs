@@ -9117,6 +9117,40 @@ fn ocr_tools_make_a_scan_searchable() {
     assert!(a.call("edit_undo", &json!({ "doc": scan })).is_err(), "ocr_words changes nothing, so there is no undo");
 }
 
+/// The PP-OCRv5 engine through the tools: ocr_status reports it, and without its optional
+/// models a job that names it fails up front saying which files are missing. With them (set
+/// PDFCRAFT_MODELS to the folder `cargo xtask models --optional` filled) it reads a scan, its
+/// words carry confidences, and ja-vert is accepted.
+#[test]
+fn ppocr_engine_through_the_tools() {
+    let dir = workdir("ocr-ppocr");
+    let mut a = auto(&dir);
+    let status = ok(&mut a, "ocr_status", json!({}));
+    let engines = status["engines"].as_array().expect("engines");
+    let ppocr = engines.iter().find(|e| e["id"] == "ppocr").unwrap_or_else(|| panic!("ocr_status lists ppocr: {status}"));
+    assert!(ppocr["available"].is_boolean(), "{status}");
+    let text = ok(&mut a, "doc_create", json!({ "from": "text", "text": "Searchable scans with recognised words" }))["doc"].as_u64().unwrap();
+    ok(&mut a, "doc_export_images", json!({ "doc": text, "folder": "scan", "dpi": 150, "pages": [1] }));
+    let png = std::fs::read_dir(dir.join("scan")).unwrap().next().unwrap().unwrap().path();
+    let scan = ok(&mut a, "doc_create", json!({ "from": "images", "paths": [png.to_string_lossy()] }))["doc"].as_u64().unwrap();
+    if ppocr["available"] != true {
+        assert!(ppocr["unavailable"].as_str().is_some_and(|w| w.contains("PP-OCRv5")), "{status}");
+        let why = a.call("ocr_recognize", &json!({ "doc": scan, "engine": "ppocr" })).unwrap_err();
+        assert!(matches!(why, ToolError::Failed(_)), "{why}");
+        assert!(why.to_string().contains("PP-OCRv5_server_det.onnx"), "the error names the files: {why}");
+        eprintln!("skipped the reading half: the PP-OCRv5 models are not installed");
+        return;
+    }
+    let words = ok(&mut a, "ocr_words", json!({ "doc": scan, "engine": "ppocr", "language": "en" }));
+    let page = words["pages"][0]["words"].as_array().expect("words");
+    let read: String = page.iter().filter_map(|w| w["text"].as_str()).collect::<Vec<_>>().join(" ").to_lowercase();
+    assert!(read.contains("searchable") && read.contains("words"), "{words}");
+    assert!(page.iter().all(|w| w["confidence"].is_number()), "PP-OCRv5 words carry confidences: {words}");
+    let r = ok(&mut a, "ocr_recognize", json!({ "doc": scan, "engine": "ppocr", "language": "ja" }));
+    assert!(r["pages"][0]["text"].as_str().unwrap().to_lowercase().contains("searchable"), "{r}");
+    assert!(a.call("ocr_words", &json!({ "doc": text, "engine": "ppocr", "language": "ja-vert", "skip_text_pages": false })).is_ok());
+}
+
 /// An editable-text recognition writes a NEW file of visible text, never the source.
 #[test]
 fn ocr_recognize_editable_output_writes_visible_text() {
