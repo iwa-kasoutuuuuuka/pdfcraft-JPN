@@ -200,41 +200,36 @@ pub fn recognize_with_strategy(
     options: &RecognizeOptions,
 ) -> Result<StrategyOutcome, OcrError> {
     // The shared shape of the ensemble strategies: the primary has read, the secondary joins
-    // or fails (a failure degrades to the primary, with a note).
-    let join = |p: Vec<Line>, sec: &dyn Recognizer| match sec.recognize(image, options) {
+    // or fails (a failure degrades to the primary, with a note). Each engine's own notes for
+    // the page (a GPU that fell back to the CPU) are kept, the primary's first.
+    let join = |p: Vec<Line>, sec: &dyn Recognizer| match sec.recognize_noted(image, options) {
         // Over the comparison cap the merge is skipped: the secondary's reading was read but
-        // is not part of the result, so the outcome says so — primary only, honestly not
+        // is not part of the result, so the outcome says so: primary only, honestly not
         // merged, with the skip named.
-        Ok(s) if over_cap(&p, &s) => {
+        Ok((s, _)) if over_cap(&p, &s) => {
             let (primary_words, secondary_words) = (p.iter().map(|l| l.words.len()).sum::<usize>(), s.iter().map(|l| l.words.len()).sum::<usize>());
             StrategyOutcome { lines: p, secondary_ran: false, notes: vec![cap_note(sec.id(), primary_words, secondary_words)] }
         }
-        Ok(s) => StrategyOutcome { lines: rover_merge(p, s, sec.id()), secondary_ran: true, notes: Vec::new() },
+        Ok((s, notes)) => StrategyOutcome { lines: rover_merge(p, s, sec.id()), secondary_ran: true, notes },
         Err(e) => StrategyOutcome { lines: p, secondary_ran: false, notes: vec![degraded_note(sec.id(), &e)] },
     };
-    match strategy {
-        MergeStrategy::PrimaryOnly => Ok(StrategyOutcome { lines: primary.recognize(image, options)?, secondary_ran: false, notes: Vec::new() }),
-        MergeStrategy::RoverVote => match secondary {
-            None => Ok(StrategyOutcome { lines: primary.recognize(image, options)?, secondary_ran: false, notes: Vec::new() }),
-            Some(sec) => {
-                let p = primary.recognize(image, options)?;
-                Ok(join(p, sec))
-            }
+    let alone = |lines: Vec<Line>| StrategyOutcome { lines, secondary_ran: false, notes: Vec::new() };
+    // Every strategy reads with the primary first, once.
+    let (p, primary_notes) = primary.recognize_noted(image, options)?;
+    let mut outcome = match (strategy, secondary) {
+        (MergeStrategy::PrimaryOnly, _) | (_, None) => alone(p),
+        (MergeStrategy::RoverVote, Some(sec)) => join(p, sec),
+        (MergeStrategy::ConfidenceWeighted, Some(sec)) => match mean_confidence(&p) {
+            // Confident enough, or an empty reading: the primary stands alone.
+            Some(mean) if mean >= UNKNOWN_CONFIDENCE_BAR => alone(p),
+            // A weak mean, or an unknown confidence (words, none reported): the secondary runs.
+            _ => join(p, sec),
         },
-        MergeStrategy::ConfidenceWeighted => {
-            let p = primary.recognize(image, options)?;
-            match mean_confidence(&p) {
-                // Confident enough — or an empty reading: the primary stands alone.
-                Some(mean) if mean >= UNKNOWN_CONFIDENCE_BAR => Ok(StrategyOutcome { lines: p, secondary_ran: false, notes: Vec::new() }),
-                // A weak mean, or an unknown confidence (words, none reported): the secondary
-                // runs.
-                _ => match secondary {
-                    None => Ok(StrategyOutcome { lines: p, secondary_ran: false, notes: Vec::new() }),
-                    Some(sec) => Ok(join(p, sec)),
-                },
-            }
-        }
+    };
+    if !primary_notes.is_empty() {
+        outcome.notes.splice(0..0, primary_notes);
     }
+    Ok(outcome)
 }
 
 #[cfg(test)]

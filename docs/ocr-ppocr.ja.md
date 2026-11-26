@@ -1,6 +1,6 @@
 # 高精度な日本語 OCR エンジン (PP-OCRv5): 仕様と段階的ロードマップ
 
-> 状態: P0 完了、P1 実装済み (エンジン `ppocr`、rten で CPU)、P2 は試験まで: ort + CUDA と自前 WGSL の試作が RTX 5080 で動く。burn は MPL-2.0 の依存のためリポジトリに入れない | 対象: `crates/ocr`, `crates/engine/src/ocr.rs`, `xtask`
+> 状態: P0 完了、P1 実装済み (エンジン `ppocr`、rten で CPU)、P1.5 実装済み (GPU の差し替え口と L7 クレート `pdfcraft-ocr-gpu` の骨組み。カーネルはまだ無く、CPU で読む)、P2 は試験まで: ort + CUDA と自前 WGSL の試作が RTX 5080 で動く。burn は MPL-2.0 の依存のためリポジトリに入れない | 対象: `crates/ocr`, `crates/ocr-gpu`, `crates/engine/src/ocr.rs`, `xtask`
 
 ## 1. 目的
 
@@ -146,6 +146,26 @@ GPU のメモリは中間バッファを生存区間で再利用して抑える�
 - UI: エンジンの一覧に「PP-OCRv5」を出すのは、モデルが入っている環境だけ（§4.5 の決定どおり、リリースには出ない）。
 - ルビ: 本文とは別の行として読む。順序なしの CER は 0〜6.8% で本文は読めている。ルビを除く処理は入れていない（文字の大きさで判定すると、表の小さい文字も落とすおそれがあるため）。
 - 合成 30 ページ（`cargo xtask ocr-bench -- --engines ppocrv5`、手元）: 順序なしの CER は 0.7%、行の再現率は 99.8%、0.50 ページ/秒（試作では 0.8%・99.2%・約 0.6 ページ/秒。速度の差は、PC の負荷の違いを含む）。
+
+### P1.5 GPU の差し替え口 (2026-11-27、実装済み)
+
+- `crates/ocr`（L4）: `ppocr::NetworkFactory` トレイトを追加した。検証済みのモデルのバイト列から、GPU 上の det / rec の `Network` を作る。
+  - `PpOcr::load_with_gpu` は CPU のネットワークも必ず読み込み、切り替え先として持つ。
+  - 自己検査: 決まった入力（det は 64×64、rec は 48×160）を CPU と GPU の両方に通し、形が同じで差が 1e-3 以内のときだけ GPU を使う。外れたら CPU のままにし、理由を毎ページの注記に残す。
+  - 実行中に GPU がエラーを返す、出力の形が値の数と合わない、NaN や inf を返すときは、そのページを CPU で読み直し、セッションの残りも CPU にする。注記はそのページと以後の毎ページに残る。
+  - `take_gpu_fallback_notice()` は、最初の切り替えの理由を 1 セッションに 1 回だけ返す（UI での通知は P3）。
+  - `Recognizer::recognize_noted`（既定の実装は注記なし）を追加し、`recognize_with_strategy` が各エンジンの注記をページの注記に渡すようにした。
+- engine（L6）: `register_gpu(Arc<dyn NetworkFactory>)` と `OcrSettings::gpu`（既定は false）を追加した。
+  - GPU を求めたジョブで登録が無いときは、CPU で読み、「GPU のバックエンドが無い」と注記する。
+  - キャッシュは GPU の有無ごとに持つ。
+- `crates/ocr-gpu`（新しい L7 クレート、`xtask/src/layers.rs` に 1 行）:
+  - `onnx`: 自前の最小 ONNX リーダー（依存は増やしていない）。長さはすべて残りの範囲と突き合わせる。varint は 10 バイトまで、サブグラフはたどらない。ノード・重み・属性・次元・重みの値の数には上限がある。外部データは読まない。Identity の循環でも止まる。
+    - 切り詰め、1 バイトの書き換え、乱数のバイト列で panic しないことを試験している。
+    - 実モデルは det が opset 11・演算子 11 種、rec が opset 10・23 種で、§4 と一致した。Conv の重みは Identity や Constant をたどって全部見つかる。
+  - `GpuContext::shared`: 描画用のデバイスとキューを受け取る（§4.5 の決定）。ソフトウェアのアダプター（WARP、llvmpipe）は断る。
+  - `WgpuFactory`: 両モデルを読み、カーネルの無い演算子を名前で挙げて断る（`SUPPORTED_OPS` はまだ空）。そのため、いまは GPU を有効にしても CPU で読み、理由が注記に出る。
+- アプリ（L8）: eframe の wgpu の描画状態があるとき、`WgpuFactory` を登録する。設定の UI はまだ無い（P3）ので、ジョブが GPU を求めることは無い。CLI / MCP の `--gpu` も P3。
+- P2 で守ること（描画用デバイスを共用するため）: 送信は小さく分けて 1 フレーム（約 16 ms）を大きく超えない。検証エラーは error scope で捕まえる。デバイスを失ったら `Network::run` がエラーを返し、上の切り替えで CPU に移る。
 
 ### P2 GPU
 

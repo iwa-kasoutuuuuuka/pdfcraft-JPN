@@ -28,6 +28,8 @@
 //! post-processing.
 
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use super::{Line, OcrError, OcrImage, RecognizeOptions, Recognizer, Word, is_cjk};
 
@@ -82,6 +84,99 @@ const MAX_FILE_BYTES: u64 = 512 * 1024 * 1024;
 /// checks the shape against the values; implementations need not be trusted to.
 pub trait Network: Send + Sync {
     fn run(&self, shape: [usize; 4], data: Vec<f32>) -> Result<(Vec<usize>, Vec<f32>), OcrError>;
+}
+
+/// Makes the two networks on another device (a GPU), from the model files' bytes (already
+/// checked against their SHA-256). This crate cannot know about GPUs (they are an L7 concern),
+/// so the program (L8) registers one with the engine, which hands it to
+/// [`PpOcr::load_with_gpu`]. `Err` means it cannot run them here, and the reader stays on the
+/// CPU.
+/// The detection and recognition networks, in that order.
+pub type Networks = (Box<dyn Network>, Box<dyn Network>);
+
+pub trait NetworkFactory: Send + Sync {
+    /// What runs the networks, for notes and status ("wgpu on ...").
+    fn name(&self) -> String;
+    /// The detection and recognition networks.
+    fn networks(&self, detection: &[u8], recognition: &[u8]) -> Result<Networks, OcrError>;
+}
+
+/// Largest difference between the GPU's and the CPU's outputs the self-check accepts. Both
+/// networks end in probabilities (0..1); the prototype kernels differed by under 1e-4.
+pub const SELF_CHECK_TOLERANCE: f32 = 1e-3;
+
+/// The first reason this session fell back from the GPU to the CPU, and whether it was handed
+/// out ([`take_gpu_fallback_notice`]).
+static FALLBACK_NOTICE: Mutex<(Option<String>, bool)> = Mutex::new((None, false));
+
+fn report_fallback(why: &str) {
+    let mut n = FALLBACK_NOTICE.lock().unwrap_or_else(|e| e.into_inner());
+    if n.0.is_none() {
+        n.0 = Some(why.to_string());
+    }
+}
+
+/// Why recognition moved from the GPU to the CPU, once a session: the first call after the
+/// first fallback returns it, every other call `None`. (Each page's notes say it every time.)
+pub fn take_gpu_fallback_notice() -> Option<String> {
+    let mut n = FALLBACK_NOTICE.lock().unwrap_or_else(|e| e.into_inner());
+    if n.1 {
+        return None;
+    }
+    let why = n.0.clone()?;
+    n.1 = true;
+    Some(why)
+}
+
+/// The networks on a GPU, while they behave.
+struct Gpu {
+    det: Box<dyn Network>,
+    rec: Box<dyn Network>,
+    name: String,
+    /// Cleared on the first failure: the rest of the session reads on the CPU.
+    healthy: AtomicBool,
+    /// Why it was given up, for every later page's notes.
+    failed: Mutex<Option<String>>,
+}
+
+#[derive(Clone, Copy)]
+enum Net {
+    Det,
+    Rec,
+}
+
+/// An output whose shape matches its length and whose values are all finite: anything else
+/// from a GPU is a failure, never a reading.
+fn sane(out: (Vec<usize>, Vec<f32>)) -> Result<(Vec<usize>, Vec<f32>), OcrError> {
+    let n = out.0.iter().try_fold(1usize, |a, &d| a.checked_mul(d));
+    if n != Some(out.1.len()) {
+        return Err(recognize(format!("output shape {:?} does not hold its {} values", out.0, out.1.len())));
+    }
+    if out.1.iter().any(|v| !v.is_finite()) {
+        return Err(recognize("output has values that are not finite"));
+    }
+    Ok(out)
+}
+
+/// A fixed input for the self-check: a smooth pattern in -1..1.
+fn probe(shape: [usize; 4]) -> Vec<f32> {
+    let n = shape.iter().product::<usize>();
+    (0..n).map(|i| ((i % 997) as f32 * 0.37).sin()).collect()
+}
+
+/// Run one network on both and compare (shapes equal, every value within
+/// [`SELF_CHECK_TOLERANCE`]).
+fn self_check(cpu: &dyn Network, gpu: &dyn Network, shape: [usize; 4]) -> Result<(), String> {
+    let want = cpu.run(shape, probe(shape)).and_then(sane).map_err(|e| format!("the CPU check failed: {e}"))?;
+    let got = gpu.run(shape, probe(shape)).and_then(sane).map_err(|e| e.to_string())?;
+    if got.0 != want.0 {
+        return Err(format!("its output shape {:?} differs from the CPU's {:?}", got.0, want.0));
+    }
+    let worst = got.1.iter().zip(&want.1).map(|(a, b)| (a - b).abs()).fold(0.0f32, f32::max);
+    if worst > SELF_CHECK_TOLERANCE {
+        return Err(format!("its results differ from the CPU's by up to {worst}"));
+    }
+    Ok(())
 }
 
 /// rten on the CPU.
@@ -188,8 +283,12 @@ pub fn read_dictionary(yml: &str) -> Result<Vec<String>, OcrError> {
 /// A loaded PP-OCRv5 reader. Loading takes a few seconds (two 85 MB networks, hashed first);
 /// keep one and reuse it. It is `Send + Sync`: pages may be read on several threads at once.
 pub struct PpOcr {
+    /// The networks on the CPU: the reading when there is no GPU, and the fallback when it fails.
     det: Box<dyn Network>,
     rec: Box<dyn Network>,
+    gpu: Option<Gpu>,
+    /// The GPU was asked for and is not used: why (every page's notes say it).
+    gpu_refused: Option<String>,
     dict: Vec<String>,
     det_side: usize,
     id: &'static str,
@@ -238,21 +337,120 @@ impl PpOcr {
     /// Load the files from their contents. Bytes that are not the files ATTRIBUTION.toml names
     /// are an error, before anything parses them.
     pub fn from_bytes(detection: Vec<u8>, recognition: Vec<u8>, dictionary: Vec<u8>) -> Result<PpOcr, OcrError> {
+        Self::from_bytes_with(detection, recognition, dictionary, None)
+    }
+
+    /// [`PpOcr::load`], with the networks also made on a GPU by `factory`. The CPU networks
+    /// are loaded too, as the fallback. A factory that cannot make them, or networks that fail
+    /// the self-check (the same fixed input through the CPU and the GPU must agree within
+    /// [`SELF_CHECK_TOLERANCE`]), leave the reader on the CPU, saying why on every page.
+    pub fn load_with_gpu(models: &PpOcrModels, factory: &dyn NetworkFactory) -> Result<PpOcr, OcrError> {
+        Self::from_bytes_with(read_capped(&models.detection)?, read_capped(&models.recognition)?, read_capped(&models.dictionary)?, Some(factory))
+    }
+
+    fn from_bytes_with(
+        detection: Vec<u8>,
+        recognition: Vec<u8>,
+        dictionary: Vec<u8>,
+        factory: Option<&dyn NetworkFactory>,
+    ) -> Result<PpOcr, OcrError> {
         let dictionary = verified(PPOCR_DICTIONARY, PPOCR_DICTIONARY_SHA256, dictionary)?;
         let yml = String::from_utf8(dictionary).map_err(|e| OcrError::Load(PPOCR_DICTIONARY.into(), e.to_string()))?;
         let model = |name: &str, sha256: &str, data: Vec<u8>| -> Result<Box<dyn Network>, OcrError> {
             let data = verified(name, sha256, data)?;
             Ok(Box::new(Rten(rten::Model::load(data).map_err(|e| OcrError::Load(name.into(), e.to_string()))?)))
         };
+        let detection = verified(PPOCR_DETECTION_MODEL, PPOCR_DETECTION_MODEL_SHA256, detection)?;
+        let recognition = verified(PPOCR_RECOGNITION_MODEL, PPOCR_RECOGNITION_MODEL_SHA256, recognition)?;
+        let gpu = factory.map(|f| (f.name(), f.networks(&detection, &recognition)));
         let det = model(PPOCR_DETECTION_MODEL, PPOCR_DETECTION_MODEL_SHA256, detection)?;
         let rec = model(PPOCR_RECOGNITION_MODEL, PPOCR_RECOGNITION_MODEL_SHA256, recognition)?;
-        Self::with_networks(det, rec, &yml, PPOCR_ID)
+        let cpu = Self::with_networks(det, rec, &yml, PPOCR_ID)?;
+        Ok(match gpu {
+            None => cpu,
+            Some((name, Ok((det, rec)))) => cpu.with_gpu(det, rec, name),
+            Some((name, Err(e))) => cpu.with_gpu_refused(format!("the GPU ({name}) is not used: {e}; reading on the CPU")),
+        })
     }
 
     /// A reader over networks run some other way (tests, the benchmark's other runtimes), with
     /// the dictionary from the recogniser's `inference.yml` and `id` as the words' source.
     pub fn with_networks(det: Box<dyn Network>, rec: Box<dyn Network>, dictionary_yml: &str, id: &'static str) -> Result<PpOcr, OcrError> {
-        Ok(PpOcr { det, rec, dict: read_dictionary(dictionary_yml)?, det_side: DEFAULT_DET_SIDE, id })
+        Ok(PpOcr { det, rec, gpu: None, gpu_refused: None, dict: read_dictionary(dictionary_yml)?, det_side: DEFAULT_DET_SIDE, id })
+    }
+
+    /// The same reader, running `det` and `rec` on a GPU named `name` first and its own
+    /// networks as the fallback, when they pass the self-check; else it stays on the CPU and
+    /// says why on every page.
+    pub fn with_gpu(mut self, det: Box<dyn Network>, rec: Box<dyn Network>, name: String) -> PpOcr {
+        let checked = self_check(self.det.as_ref(), det.as_ref(), [1, 3, 64, 64])
+            .and_then(|()| self_check(self.rec.as_ref(), rec.as_ref(), [1, 3, REC_HEIGHT, REC_BUCKET]));
+        match checked {
+            Ok(()) => {
+                self.gpu = Some(Gpu { det, rec, name, healthy: AtomicBool::new(true), failed: Mutex::new(None) });
+                self.gpu_refused = None;
+                self
+            }
+            Err(why) => self.with_gpu_refused(format!("the GPU ({name}) is not used: the self-check failed, {why}; reading on the CPU")),
+        }
+    }
+
+    /// The same reader on the CPU, with `why` the GPU that was asked for is not used (noted on
+    /// every page, and the session's fallback notice).
+    pub fn with_gpu_refused(mut self, why: String) -> PpOcr {
+        report_fallback(&why);
+        self.gpu = None;
+        self.gpu_refused = Some(why);
+        self
+    }
+
+    /// What runs the networks now: `"rten"` (the CPU), or the GPU's name while it works.
+    pub fn backend(&self) -> String {
+        match &self.gpu {
+            Some(g) if g.healthy.load(Ordering::Relaxed) => g.name.clone(),
+            _ => "rten".into(),
+        }
+    }
+
+    /// Run one network: on the GPU while it works (an error, or an output that is not sane,
+    /// gives it up for the session, with a note), else on the CPU.
+    fn run(&self, net: Net, shape: [usize; 4], data: Vec<f32>, notes: &mut Vec<String>) -> Result<(Vec<usize>, Vec<f32>), OcrError> {
+        let cpu = match net {
+            Net::Det => self.det.as_ref(),
+            Net::Rec => self.rec.as_ref(),
+        };
+        if let Some(gpu) = self.gpu.as_ref().filter(|g| g.healthy.load(Ordering::Relaxed)) {
+            let on_gpu = match net {
+                Net::Det => gpu.det.as_ref(),
+                Net::Rec => gpu.rec.as_ref(),
+            };
+            match on_gpu.run(shape, data.clone()).and_then(sane) {
+                Ok(out) => return Ok(out),
+                Err(e) => {
+                    let why = format!("the GPU ({}) failed: {e}; this page and the rest of the session are read on the CPU", gpu.name);
+                    gpu.healthy.store(false, Ordering::Relaxed);
+                    *gpu.failed.lock().unwrap_or_else(|e| e.into_inner()) = Some(why.clone());
+                    report_fallback(&why);
+                    notes.push(why);
+                }
+            }
+        }
+        cpu.run(shape, data)
+    }
+
+    /// [`PpOcr::read`], with the page's notes: why the GPU is not used (every page), or that it
+    /// failed on this page.
+    pub fn read_noted(&self, image: &OcrImage, vertical: Option<bool>) -> Result<(Vec<Line>, Vec<String>), OcrError> {
+        let mut notes = Vec::new();
+        if let Some(why) = &self.gpu_refused {
+            notes.push(why.clone());
+        } else if let Some(g) = self.gpu.as_ref().filter(|g| !g.healthy.load(Ordering::Relaxed))
+            && let Some(why) = g.failed.lock().unwrap_or_else(|e| e.into_inner()).clone()
+        {
+            notes.push(why);
+        }
+        let lines = self.read_into(image, vertical, &mut notes)?;
+        Ok((lines, notes))
     }
 
     /// The same reader with another detection input size (clamped to
@@ -270,6 +468,10 @@ impl PpOcr {
     /// Read `image`. `vertical`: `Some(true)` reads it as a vertical page, `Some(false)` as a
     /// horizontal one, `None` decides from its boxes.
     pub fn read(&self, image: &OcrImage, vertical: Option<bool>) -> Result<Vec<Line>, OcrError> {
+        self.read_into(image, vertical, &mut Vec::new())
+    }
+
+    fn read_into(&self, image: &OcrImage, vertical: Option<bool>, notes: &mut Vec<String>) -> Result<Vec<Line>, OcrError> {
         let (w, h) = (image.width() as usize, image.height() as usize);
         let mut grey = Vec::with_capacity(w.saturating_mul(h));
         for y in 0..h {
@@ -278,7 +480,7 @@ impl PpOcr {
             }
         }
         let page = Grey { px: &grey, w, h };
-        let boxes = self.detect(&page)?;
+        let boxes = self.detect(&page, notes)?;
         let vertical_page = vertical.unwrap_or_else(|| boxes.iter().filter(|b| b.is_tall()).count() * 2 > boxes.len());
         let lines: Vec<Pending> = boxes
             .into_iter()
@@ -289,7 +491,7 @@ impl PpOcr {
                 Pending { b, turned, rw }
             })
             .collect();
-        let read = self.read_lines(&page, &lines)?;
+        let read = self.read_lines(&page, &lines, notes)?;
         let mut placed: Vec<(TextBox, Vec<Word>)> = Vec::new();
         for (line, chars) in lines.iter().zip(read) {
             let words = self.words(line, &chars);
@@ -302,7 +504,7 @@ impl PpOcr {
     }
 
     /// Text boxes in page pixels.
-    fn detect(&self, page: &Grey) -> Result<Vec<TextBox>, OcrError> {
+    fn detect(&self, page: &Grey, notes: &mut Vec<String>) -> Result<Vec<TextBox>, OcrError> {
         let (w, h) = (page.w, page.h);
         if w == 0 || h == 0 {
             return Err(OcrError::EmptyImage);
@@ -324,7 +526,7 @@ impl PpOcr {
                 }
             }
         }
-        let (shape, data) = self.det.run([1, 3, dh, dw], input)?;
+        let (shape, data) = self.run(Net::Det, [1, 3, dh, dw], input, notes)?;
         let (ph, pw) = match shape.as_slice() {
             [1, 1, ph, pw] if *ph > 0 && *pw > 0 && ph.checked_mul(*pw) == Some(data.len()) => (*ph, *pw),
             other => return Err(recognize(format!("unexpected detection output shape {other:?} for {} values", data.len()))),
@@ -335,7 +537,7 @@ impl PpOcr {
     /// Read `lines` in batches of equal padded width, cropping each batch only when it runs
     /// (at most [`REC_BATCH`] lines are held at once). Returns each line's characters, in the
     /// order given.
-    fn read_lines(&self, page: &Grey, lines: &[Pending]) -> Result<Vec<Vec<ReadChar>>, OcrError> {
+    fn read_lines(&self, page: &Grey, lines: &[Pending], notes: &mut Vec<String>) -> Result<Vec<Vec<ReadChar>>, OcrError> {
         let mut order: Vec<usize> = (0..lines.len()).collect();
         order.sort_by_key(|&i| lines.get(i).map_or(0, |l| bucket(l.rw)));
         let mut out = vec![Vec::new(); lines.len()];
@@ -358,7 +560,7 @@ impl PpOcr {
                         }
                     }
                 }
-                let (shape, data) = self.rec.run([n, 3, REC_HEIGHT, bw], input)?;
+                let (shape, data) = self.run(Net::Rec, [n, 3, REC_HEIGHT, bw], input, notes)?;
                 let (steps, classes) = match shape.as_slice() {
                     [b, t, c] if *b == n && *t > 0 && *c > 0 && b.checked_mul(*t).and_then(|bt| bt.checked_mul(*c)) == Some(data.len()) => (*t, *c),
                     other => return Err(recognize(format!("unexpected recognition output shape {other:?} for {} values", data.len()))),
@@ -438,6 +640,10 @@ impl Recognizer for PpOcr {
 
     fn recognize(&self, image: &OcrImage, options: &RecognizeOptions) -> Result<Vec<Line>, OcrError> {
         self.read(image, (options.language == "ja-vert").then_some(true))
+    }
+
+    fn recognize_noted(&self, image: &OcrImage, options: &RecognizeOptions) -> Result<(Vec<Line>, Vec<String>), OcrError> {
+        self.read_noted(image, (options.language == "ja-vert").then_some(true))
     }
 }
 
@@ -889,5 +1095,120 @@ mod tests {
         let ocr = PpOcr::load(&models).unwrap();
         // A blank page reads as nothing, through the real networks.
         assert!(ocr.read(&white(640, 480), None).unwrap().is_empty());
+    }
+
+    /// A GPU network: `inner` answers, and from its `fail_from`-th run on it returns an error.
+    struct Flaky {
+        inner: Box<dyn Network>,
+        runs: std::sync::atomic::AtomicUsize,
+        fail_from: usize,
+    }
+
+    impl Network for Flaky {
+        fn run(&self, shape: [usize; 4], data: Vec<f32>) -> Result<(Vec<usize>, Vec<f32>), OcrError> {
+            let n = self.runs.fetch_add(1, Ordering::Relaxed);
+            if n >= self.fail_from {
+                return Err(OcrError::Recognize("device lost".into()));
+            }
+            self.inner.run(shape, data)
+        }
+    }
+
+    fn flaky(inner: Box<dyn Network>, fail_from: usize) -> Box<dyn Network> {
+        Box::new(Flaky { inner, runs: std::sync::atomic::AtomicUsize::new(0), fail_from })
+    }
+
+    /// The CPU pair the GPU tests read with: one row of 日本 on a 320 x 64 page.
+    fn cpu_reader() -> PpOcr {
+        PpOcr::with_networks(det_marking(vec![[100, 120, 1500, 200]]), rec_reading(vec![1, 0, 2, 0], 8), YML, PPOCR_ID).unwrap()
+    }
+
+    fn text(lines: &[Line]) -> String {
+        lines.iter().map(Line::text).collect::<Vec<_>>().join("/")
+    }
+
+    /// A GPU that agrees with the CPU passes the self-check and reads, with no notes.
+    #[test]
+    fn a_gpu_that_agrees_with_the_cpu_reads() {
+        let ocr = cpu_reader().with_gpu(det_marking(vec![[100, 120, 1500, 200]]), rec_reading(vec![1, 0, 2, 0], 8), "test GPU".into());
+        assert_eq!(ocr.backend(), "test GPU");
+        let (lines, notes) = ocr.read_noted(&white(320, 64), None).unwrap();
+        assert_eq!(text(&lines), "日本");
+        assert!(notes.is_empty(), "{notes:?}");
+    }
+
+    /// A GPU whose results differ from the CPU's (a driver bug) is never used: the reader stays
+    /// on the CPU and every page says why.
+    #[test]
+    fn a_gpu_that_disagrees_with_the_cpu_is_refused_and_every_page_says_so() {
+        let wrong = fixed(|[n, _, _, _]| (vec![n, 4, 8], vec![0.5; n * 4 * 8]));
+        let ocr = cpu_reader().with_gpu(det_marking(vec![[100, 120, 1500, 200]]), wrong, "test GPU".into());
+        assert_eq!(ocr.backend(), "rten");
+        for _ in 0..2 {
+            let (lines, notes) = ocr.read_noted(&white(320, 64), None).unwrap();
+            assert_eq!(text(&lines), "日本", "the CPU reads");
+            assert!(notes.len() == 1 && notes[0].contains("self-check") && notes[0].contains("test GPU"), "{notes:?}");
+        }
+        // NaN and a shape that does not hold its values are refused the same way.
+        for bad in [fixed(|[_, _, h, w]| (vec![1, 1, h, w], vec![f32::NAN; h * w])), fixed(|[_, _, h, w]| (vec![1, 1, h, w], vec![0.0; 3]))] {
+            let ocr = cpu_reader().with_gpu(bad, rec_reading(vec![1, 0, 2, 0], 8), "test GPU".into());
+            assert_eq!(ocr.backend(), "rten");
+        }
+    }
+
+    /// A GPU that fails mid-session (an error, or an output that is not sane) gives way to the
+    /// CPU for that page and the rest of the session; the page is still read, and every page
+    /// from then on notes it.
+    #[test]
+    fn a_gpu_that_fails_falls_back_to_the_cpu_for_the_rest_of_the_session() {
+        // Two self-check runs, then one good page (det + rec), then failure.
+        let ocr =
+            cpu_reader().with_gpu(flaky(det_marking(vec![[100, 120, 1500, 200]]), 2), flaky(rec_reading(vec![1, 0, 2, 0], 8), 2), "test GPU".into());
+        let (lines, notes) = ocr.read_noted(&white(320, 64), None).unwrap();
+        assert_eq!((text(&lines).as_str(), notes.len()), ("日本", 0));
+        let (lines, notes) = ocr.read_noted(&white(320, 64), None).unwrap();
+        assert_eq!(text(&lines), "日本", "the failing page is read on the CPU");
+        assert!(notes.len() == 1 && notes[0].contains("device lost"), "{notes:?}");
+        assert_eq!(ocr.backend(), "rten");
+        let (_, notes) = ocr.read_noted(&white(320, 64), None).unwrap();
+        assert!(notes.len() == 1 && notes[0].contains("device lost"), "later pages note it too: {notes:?}");
+        // The session notice is handed out once (another test may have taken it first).
+        let _ = take_gpu_fallback_notice();
+        assert_eq!(take_gpu_fallback_notice(), None);
+        // A GPU that starts answering NaN after the check is given up the same way.
+        let nan_after = |inner: Box<dyn Network>| -> Box<dyn Network> {
+            let runs = std::sync::atomic::AtomicUsize::new(0);
+            fixed(move |shape| {
+                let (s, v) = inner.run(shape, vec![0.0; shape.iter().product()]).unwrap();
+                if runs.fetch_add(1, Ordering::Relaxed) >= 1 { (s, vec![f32::NAN; v.len()]) } else { (s, v) }
+            })
+        };
+        let ocr = cpu_reader().with_gpu(nan_after(det_marking(vec![[100, 120, 1500, 200]])), rec_reading(vec![1, 0, 2, 0], 8), "test GPU".into());
+        let (lines, notes) = ocr.read_noted(&white(320, 64), None).unwrap();
+        assert_eq!(text(&lines), "日本");
+        assert!(notes.iter().any(|n| n.contains("not finite")), "{notes:?}");
+    }
+
+    /// A factory that cannot make the networks leaves the reader on the CPU, saying why.
+    #[test]
+    fn a_factory_that_cannot_run_the_models_leaves_the_reader_on_the_cpu() {
+        struct NoKernels;
+        impl NetworkFactory for NoKernels {
+            fn name(&self) -> String {
+                "no kernels".into()
+            }
+            fn networks(&self, _: &[u8], _: &[u8]) -> Result<Networks, OcrError> {
+                Err(OcrError::Load("wgpu".into(), "the kernels are not built yet".into()))
+            }
+        }
+        let Some(models) = PpOcrModels::find() else {
+            eprintln!("skipped: the PP-OCRv5 models are not installed (cargo xtask models --optional)");
+            return;
+        };
+        let ocr = PpOcr::load_with_gpu(&models, &NoKernels).unwrap();
+        assert_eq!(ocr.backend(), "rten");
+        let (lines, notes) = ocr.read_noted(&white(320, 64), None).unwrap();
+        assert!(lines.is_empty());
+        assert!(notes.len() == 1 && notes[0].contains("no kernels") && notes[0].contains("not built yet"), "{notes:?}");
     }
 }

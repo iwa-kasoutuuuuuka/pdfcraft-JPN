@@ -252,6 +252,11 @@ pub trait Recognizer: Send + Sync {
     fn languages(&self) -> Vec<(String, String)>;
     /// Read the words in `image`, in reading order.
     fn recognize(&self, image: &OcrImage, options: &RecognizeOptions) -> Result<Vec<Line>, OcrError>;
+    /// [`Recognizer::recognize`], with notes for the page (an engine that fell back from its
+    /// GPU to the CPU says so). Engines with nothing to note keep this default.
+    fn recognize_noted(&self, image: &OcrImage, options: &RecognizeOptions) -> Result<(Vec<Line>, Vec<String>), OcrError> {
+        Ok((self.recognize(image, options)?, Vec::new()))
+    }
 }
 
 /// A word placed on a page, in PDF user space: the bottom-left corner of its box, and the
