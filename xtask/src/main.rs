@@ -11,6 +11,7 @@ mod layers;
 mod license_check;
 mod macos_integration;
 mod netcheck;
+mod ocr_bench;
 mod parity;
 mod screenshots;
 mod version;
@@ -55,6 +56,11 @@ const COMMANDS: &[(&str, &str, Command)] = &[
     ),
     ("screenshots", "Regenerate the README screenshots in docs/images/ and their ATTRIBUTION entries", screenshots::run),
     ("models", "Fetch the OCR models (ATTRIBUTION.toml kind = \"model\") into assets/models/, verified by SHA-256", assets::models),
+    (
+        "ocr-bench",
+        "Read synthetic Japanese scans (horizontal, vertical, ruby, table; noise, blur, skew; 300/200 dpi) with each OCR engine and report CER, line recall and pages/s (--engines, --out, --images, --quick)",
+        ocr_bench::run,
+    ),
     ("demo-pdf", "Build dist/demo/pdfcraft-showcase.pdf (needs Google Chrome or Chromium)", demo_pdf::run),
     (
         "web-worker-link",

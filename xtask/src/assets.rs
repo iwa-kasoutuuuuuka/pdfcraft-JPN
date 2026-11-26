@@ -137,6 +137,10 @@ pub struct Fetched {
     pub kind: String,
     pub usage: String,
     pub sha256: String,
+    /// Fetched only on request (`cargo xtask models --optional`): models under evaluation, kept
+    /// out of the release packages, which ship what a plain `cargo xtask models` fetches.
+    #[serde(default)]
+    pub optional: bool,
 }
 
 pub fn root() -> PathBuf {
@@ -323,10 +327,10 @@ pub fn check(root: &Path, m: &Manifest, repo_files: &[String], lock: &BTreeSet<(
 
 /// Download (if needed) and verify every `[[fetched]]` entry of `kind` into `dir`, with its licence
 /// text. Returns the paths of the fetched files. Uses `curl`, present on macOS, Windows 10+ and Linux.
-pub fn fetch_all(m: &Manifest, dir: &Path, kind: &str) -> Result<Vec<PathBuf>> {
+pub fn fetch_all(m: &Manifest, dir: &Path, kind: &str, optional: bool) -> Result<Vec<PathBuf>> {
     std::fs::create_dir_all(dir)?;
     let mut out = Vec::new();
-    for f in m.fetched.iter().filter(|f| f.kind == kind) {
+    for f in m.fetched.iter().filter(|f| f.kind == kind && (optional || !f.optional)) {
         let path = dir.join(&f.file);
         fetch_verified(&f.url, &path, &f.sha256)?;
         let licence = dir.join(format!("{}.LICENCE.txt", f.file));
@@ -355,24 +359,30 @@ fn fetch_verified(url: &str, path: &Path, sha256: &str) -> Result<()> {
     Ok(())
 }
 
-/// `cargo xtask models [DIR]`: fetch the OCR models (`kind = "model"`) into `assets/models/` (git-ignored),
-/// where the app and tests look for them. Each comes with its licence (`<file>.LICENCE.txt`), and
-/// `ATTRIBUTION.txt` credits them all, so the release packages can ship the directory as it is.
+/// `cargo xtask models [--optional] [DIR]`: fetch the OCR models (`kind = "model"`) into
+/// `assets/models/` (git-ignored), where the app and tests look for them. Each comes with its
+/// licence (`<file>.LICENCE.txt`), and `ATTRIBUTION.txt` credits them all, so the release packages
+/// can ship the directory as it is. `--optional` adds the models marked `optional = true` (under
+/// evaluation, such as PP-OCRv5 for `cargo xtask ocr-bench`); the packages never pass it.
 pub fn models(args: &[String]) -> Result<()> {
     let root = root();
     let m = load(&root)?;
-    let dir = args.first().map(PathBuf::from).unwrap_or_else(|| root.join("assets/models"));
-    for p in fetch_all(&m, &dir, "model")? {
+    if let Some(flag) = args.iter().find(|a| a.starts_with("--") && *a != "--optional") {
+        bail!("unknown option {flag}: the only option is --optional (then an optional destination directory)");
+    }
+    let optional = args.iter().any(|a| a == "--optional");
+    let dir = args.iter().find(|a| *a != "--optional").map(PathBuf::from).unwrap_or_else(|| root.join("assets/models"));
+    for p in fetch_all(&m, &dir, "model", optional)? {
         println!("models: {}", p.display());
     }
-    std::fs::write(dir.join("ATTRIBUTION.txt"), models_attribution(&m))?;
+    std::fs::write(dir.join("ATTRIBUTION.txt"), models_attribution(&m, optional))?;
     Ok(())
 }
 
 /// The credits shipped beside the models (their licences require attribution).
-fn models_attribution(m: &Manifest) -> String {
+fn models_attribution(m: &Manifest, optional: bool) -> String {
     let mut s = String::from("PdfCraft's text recognition (Scan & OCR) uses these models, unmodified.\n");
-    for f in m.fetched.iter().filter(|f| f.kind == "model") {
+    for f in m.fetched.iter().filter(|f| f.kind == "model" && (optional || !f.optional)) {
         let _ = write!(
             s,
             "\n{}\n  {}\n  by {}\n  from {}\n  licence: {} ({}; full text in {}.LICENCE.txt)\n",
@@ -456,8 +466,8 @@ mod tests {
     #[test]
     fn models_attribution_credits_every_model() {
         let m = load(&root()).unwrap();
-        let text = models_attribution(&m);
-        let models: Vec<_> = m.fetched.iter().filter(|f| f.kind == "model").collect();
+        let text = models_attribution(&m, false);
+        let models: Vec<_> = m.fetched.iter().filter(|f| f.kind == "model" && !f.optional).collect();
         assert!(!models.is_empty());
         for f in models {
             assert!(text.contains(&f.file) && text.contains(&f.author) && text.contains(&f.licence), "{}", f.file);

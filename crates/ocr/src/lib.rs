@@ -37,6 +37,11 @@ pub use ocrs::{
     ALPHABET, DETECTION_MODEL, DETECTION_MODEL_SHA256, LANGUAGES, Models, Ocr, OcrsRecognizer, RECOGNITION_MODEL, RECOGNITION_MODEL_SHA256,
 };
 
+// The `ort-cuda` feature is for `examples/ocr_bench` (local GPU benchmarking, never a release):
+// the library itself does not call ONNX Runtime, so name the crate to keep it a used dependency.
+#[cfg(feature = "ort-cuda")]
+use ort as _;
+
 pub use pdfcraft_fonts::TextPlan;
 pub use pdfcraft_fonts::helvetica_width;
 
