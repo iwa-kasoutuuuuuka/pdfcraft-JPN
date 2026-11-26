@@ -165,6 +165,44 @@ CUDA の登録に失敗したら CPU に黙って戻さず、エラーにする�
 リリースに入れる GPU 経路は、許可リストに収まる別の案を後で探す。候補は wgpu を直接使う自前の推論（演算子は det 11 種・rec 23 種と少ない）、
 または MPL-2.0 の 2 クレートを使わない burn の構成（上流の対応待ち）。それまでの既定は CPU の rten とする。
 
+#### 許可リストに収まる GPU 経路の調査 (2026-11-26)
+
+**必要なカーネル**（ONNX のグラフを属性まで数えた結果）:
+
+- det: 通常の Conv 131 個（1×1 が 50、3×3、9×9、7×7、5×5、1×k / k×1、2×2、ストライド 2 あり）、depthwise Conv 27 個（5×5、3×3 ストライド 2）、
+  ConvTranspose 2×2 ストライド 2 が 2 個、BatchNormalization 87 個（読み込み時に Conv の重みへ畳み込める）、MaxPool 2×2（SAME_UPPER）、
+  Resize（nearest、asymmetric、floor、整数倍）、Relu、Sigmoid、Add、Mul、Concat（チャネル方向）。
+- rec: 上と同じ種類の Conv（depthwise のストライド (2,1)・(1,2) を含む）、AvgPool 3×2、Transformer 部分（SVTR）の MatMul（120 次元。最後は 120×18385）、
+  LayerNorm 相当（ReduceMean・Sub・Pow・Sqrt・Div）、Softmax、Reshape・Transpose・Squeeze・Unsqueeze・Slice・Shape。
+  形状の計算（Shape → Slice → Reshape）は、入力の幅が決まれば定数に畳める。
+
+**既存のクレート**:
+
+| 候補 | 状態 | 判断 |
+| --- | --- | --- |
+| wonnx 0.5.1 | 2025-05 にアーカイブ。wgpu 0.19。ConvTranspose と Slice が未実装、入力形状は固定のみ | 使わない |
+| oxionnx 0.1.7 (Apache-2.0) | アルファ版。GPU は MatMul・Conv・Softmax・Relu・Resize・要素ごとの演算だけで、ほかは CPU に戻る | 参考にとどめる（CPU と GPU の往復が多く、rten に勝てない見込み） |
+| candle | wgpu バックエンドは未マージ（PR が開いたまま） | 使えない |
+| ratchet / luminal | LLM 向け、または更新停止 | 使えない |
+| burn 0.22 | MPL-2.0 の依存が必須 | 許可リスト外 |
+| ort | C++ の ONNX Runtime を包む | 任意 feature のみ（既定の方針どおり） |
+
+**自前の WGSL 推論（推奨案）**:
+
+- wgpu 30.0.1 はすでに eframe 経由で依存ツリーにあり、`cargo xtask deny` も通っている。ライセンスの追加はない（DXC を包む `mach-dxcompiler-rs` は有効にしない）。
+- **層の規則**: `cargo xtask layers` は wgpu を UI 系のクレートとして扱う。L4 の `crates/ocr` は wgpu に依存できない。
+  そこで `crates/ocr` には推論の差し替え口（ベンチの `Net` に当たるトレイト）だけを置き、wgpu の実装は L7 側に置く。
+  アプリが egui の描画用にすでに持っている wgpu のデバイスを共用できる。層の規則を変えずに済む形だが、どこに置くかはオーナーの確認が要る。
+- 作るもの:
+  - ONNX の読み込みと、入力サイズの段階ごとの実行計画（形状の計算を定数に畳み、計画をキャッシュする）。
+  - BN の畳み込みと、Conv に Bias・Relu / Sigmoid・Add を続けて行う融合。
+  - Conv の implicit GEMM（共有メモリのタイルとレジスタブロッキング。1×1 はそのまま GEMM）、depthwise Conv、ConvTranspose、プーリング、Resize、
+    rec 用の MatMul・LayerNorm・Softmax・Transpose。
+  - rten の出力と数値で比べるテスト。panic しない作りで、GPU が無い・失敗したときは rten に戻る。
+- 速度の見込み（未計測）: よく調整した f32 の WGSL は cuDNN の FP32 の 2〜4 割程度。det の大きいページでも数十 ms で、CPU より大幅に速い。
+  `shader-f16` を使えるともう一段速くなる。NVIDIA 以外の GPU（AMD、Intel の内蔵 GPU）での確認が要る。
+- 工数の見込み: 正しい出力まで 3〜5 週、f16 と融合の調整に 1〜2 週。最初に 1×1 Conv と depthwise Conv だけを作り、手元で rten と速度を比べる小さな試作（2〜3 日）で見込みを確かめるのがよい。
+
 ### P3 UI 統合と Automatic の振り分け
 
 - 設定画面にエンジンの選択肢を出す。日本語・中国語・韓国語の `Auto` で PP-OCRv5 をどう組み合わせるか (主にする、副にする、ルビや表のときだけ使う) をベンチで決める。
