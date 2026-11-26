@@ -26,7 +26,7 @@ sha256 = "64a3137e3d5cc41e5b78d2ad8dd9ddddd6588283f9f7b3128aa6a8a50852fb9a"
 [[document]]
 source = "assets/app-icon/LICENSE.txt"
 destination = "assets/app-icon/LICENSE.txt"
-sha256 = "b768acafe6cbad8247eedf86b5b5381feefcd4ee0f8c7808b86811bc687cf37b"
+sha256 = "85edcacd9bdaa8999f36c51ccd5daaa4b3f35e8f65eefa3f34e10dae692f5af2"
 
 [[document]]
 source = "assets/fonts/OFL-DancingScript.txt"
