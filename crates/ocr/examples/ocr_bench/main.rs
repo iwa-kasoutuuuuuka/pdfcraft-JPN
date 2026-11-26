@@ -16,7 +16,9 @@
 //! * `read_ratio`: characters read over characters drawn, so an engine that reads far more
 //!   than the page holds (ruby as text, noise as letters) cannot hide behind the order-free
 //!   scores, which ignore insertions and let repeated cells match the same stretch.
-//! * `pages_per_s`: pages read per second of recognition time, one page at a time.
+//! * `pages_per_s`: pages read per second of recognition time, one page at a time, over the
+//!   pages that were read without an error. Every page is read once before the timed pass, so
+//!   per-shape set-up (cuDNN's tuning, plans) is not counted: the figure is the steady state.
 //!
 //! Usage: `ocr_bench [--engines windows,tesseract,ppocrv5] [--lang ja] [--out FILE] [--images DIR]
 //! [--fonts DIR] [--models DIR] [--det-side PX] [--quick]`. `ppocrv5` is the PP-OCRv5 server
@@ -588,7 +590,7 @@ fn parse_args() -> Res<Args> {
         images: None,
         fonts: std::env::var_os("CRAFT_FONTS_DIR").map_or_else(|| PathBuf::from("craft-fonts"), PathBuf::from),
         models: None,
-        det_side: 1280,
+        det_side: 1600,
         quick: false,
     };
     let mut it = std::env::args().skip(1);
@@ -601,7 +603,7 @@ fn parse_args() -> Res<Args> {
             "--images" => a.images = Some(PathBuf::from(value("--images")?)),
             "--fonts" => a.fonts = PathBuf::from(value("--fonts")?),
             "--models" => a.models = Some(PathBuf::from(value("--models")?)),
-            "--det-side" => a.det_side = value("--det-side")?.parse()?,
+            "--det-side" => a.det_side = value("--det-side")?.parse::<usize>()?.clamp(32, 4000),
             "--quick" => a.quick = true,
             other => return Err(format!("unknown argument {other}").into()),
         }
@@ -719,8 +721,9 @@ fn main() -> Res<()> {
     let mut report = Vec::new();
     println!("{:<10} {:<18} {:<10} {:>7} {:>9} {:>12} {:>8}", "engine", "layout", "condition", "cer", "cer_unord", "line_recall", "s/page");
     for (name, engine) in &engines {
-        // Warm up: the first read loads the engine's own data.
-        if let Some(c) = cases.first() {
+        // Warm up on every page: the first read of each input shape loads data or tunes kernels
+        // (cuDNN per shape), which the timed pass should not count.
+        for c in &cases {
             let _ = engine.recognize(&c.image, &options);
         }
         let mut rows = Vec::new();
@@ -730,7 +733,10 @@ fn main() -> Res<()> {
             let secs = start.elapsed().as_secs_f64();
             let (reading, error) = match result {
                 Ok(lines) => (lines.iter().map(|l| l.text()).collect::<Vec<_>>().join("\n"), None),
-                Err(e) => (String::new(), Some(e.to_string())),
+                Err(e) => {
+                    println!("{name}: {} {}: error: {e}", case.layout, case.cond.name);
+                    (String::new(), Some(e.to_string()))
+                }
             };
             let s = score(&case.truth, &reading);
             println!(
@@ -751,19 +757,22 @@ fn main() -> Res<()> {
         }
         let n = rows.len().max(1) as f64;
         let mean = |key: &str| rows.iter().filter_map(|r| r.get(key).and_then(serde_json::Value::as_f64)).sum::<f64>() / n;
-        let total_s: f64 = rows.iter().filter_map(|r| r.get("seconds").and_then(serde_json::Value::as_f64)).sum();
+        let ok: Vec<&serde_json::Value> = rows.iter().filter(|r| r.get("error").is_some_and(serde_json::Value::is_null)).collect();
+        let errors = rows.len() - ok.len();
+        let total_s: f64 = ok.iter().filter_map(|r| r.get("seconds").and_then(serde_json::Value::as_f64)).sum();
+        let pages_per_s = if ok.is_empty() { 0.0 } else { ok.len() as f64 / total_s.max(1e-9) };
         println!(
-            "{name}: mean cer {:.1}%  mean cer_unordered {:.1}%  mean line_recall {:.1}%  {:.2} pages/s over {} pages",
+            "{name}: mean cer {:.1}%  mean cer_unordered {:.1}%  mean line_recall {:.1}%  {:.2} pages/s over {} pages, {errors} errors",
             mean("cer") * 100.0,
             mean("cer_unordered") * 100.0,
             mean("line_recall") * 100.0,
-            rows.len() as f64 / total_s.max(1e-9),
-            rows.len()
+            pages_per_s,
+            ok.len()
         );
         report.push(serde_json::json!({
             "engine": name, "language": args.lang, "pages": rows.len(),
             "mean_cer": mean("cer"), "mean_cer_unordered": mean("cer_unordered"), "mean_line_recall": mean("line_recall"),
-            "pages_per_s": rows.len() as f64 / total_s.max(1e-9), "cases": rows,
+            "pages_per_s": pages_per_s, "errors": errors, "cases": rows,
         }));
     }
     if let Some(dir) = args.out.parent() {

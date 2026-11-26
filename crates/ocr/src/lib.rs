@@ -39,7 +39,7 @@ pub use ocrs::{
 
 // The `ort-cuda` feature is for `examples/ocr_bench` (local GPU benchmarking, never a release):
 // the library itself does not call ONNX Runtime, so name the crate to keep it a used dependency.
-#[cfg(feature = "ort-cuda")]
+#[cfg(all(feature = "ort-cuda", not(target_arch = "wasm32")))]
 use ort as _;
 
 pub use pdfcraft_fonts::TextPlan;

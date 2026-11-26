@@ -89,7 +89,11 @@ mod ort_net {
             let outputs = session.run(ort::inputs![input]).map_err(err)?;
             let first = outputs.values().next().ok_or_else(|| err("the model has no output"))?;
             let (shape, values) = first.try_extract_tensor::<f32>().map_err(err)?;
-            Ok((shape.iter().map(|&d| usize::try_from(d).unwrap_or(0)).collect(), values.to_vec()))
+            let dims = shape
+                .iter()
+                .map(|&d| usize::try_from(d).map_err(|_| err(format!("the model output has a negative dimension {d}"))))
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok((dims, values.to_vec()))
         }
     }
 }
@@ -168,13 +172,16 @@ impl PpOcr {
     pub fn find(dir: Option<&PathBuf>, det_side: usize, runtime: Runtime) -> Result<PpOcr, String> {
         let dir = dir.cloned().or_else(|| std::env::var_os("PDFCRAFT_MODELS").map(PathBuf::from)).unwrap_or_else(|| PathBuf::from("assets/models"));
         if !dir.join(DET).exists() {
-            return Err(format!("no {DET} in {} (run `cargo xtask models`)", dir.display()));
+            return Err(format!("no {DET} in {} (run `cargo xtask models --optional`)", dir.display()));
         }
         PpOcr::load(&dir, det_side, runtime)
     }
 
     /// Text boxes `[x0, y0, x1, y1]` in page pixels.
     fn detect(&self, grey: &[u8], w: usize, h: usize) -> Result<Vec<[usize; 4]>, OcrError> {
+        if w == 0 || h == 0 {
+            return Err(OcrError::EmptyImage);
+        }
         let scale = self.det_side as f32 / w.max(h) as f32;
         let round32 = |v: f32| (((v / 32.0).round() as usize).max(1)) * 32;
         let (dw, dh) = (round32(w as f32 * scale), round32(h as f32 * scale));
@@ -194,7 +201,7 @@ impl PpOcr {
         }
         let (shape, data) = self.det.infer([1, 3, dh, dw], input)?;
         let (ph, pw) = match shape.as_slice() {
-            [_, _, ph, pw] if ph * pw <= data.len() => (*ph, *pw),
+            [1, 1, ph, pw] if *ph > 0 && *pw > 0 && ph.checked_mul(*pw) == Some(data.len()) => (*ph, *pw),
             other => return Err(err(format!("unexpected detection output shape {other:?}"))),
         };
         let mask: Vec<bool> = data.iter().map(|&p| p > 0.3).collect();
@@ -317,11 +324,13 @@ impl PpOcr {
             }
             let (shape, data) = self.rec.infer([n, 3, 48, bw], input)?;
             let (steps, classes) = match shape.as_slice() {
-                [b, t, c] if *b == n && b * t * c <= data.len() => (*t, *c),
+                [b, t, c] if *b == n && *c > 0 && b.checked_mul(*t).and_then(|bt| bt.checked_mul(*c)) == Some(data.len()) => (*t, *c),
                 other => return Err(err(format!("unexpected recognition output shape {other:?}"))),
             };
             for (slot, &k) in group.iter().enumerate() {
-                let seq = data.get(slot * steps * classes..(slot + 1) * steps * classes).unwrap_or(&[]);
+                let seq = data
+                    .get(slot * steps * classes..(slot + 1) * steps * classes)
+                    .ok_or_else(|| err("the recognition output is shorter than its shape"))?;
                 if let Some(o) = out.get_mut(k) {
                     *o = self.decode(seq, steps, classes)?;
                 }
