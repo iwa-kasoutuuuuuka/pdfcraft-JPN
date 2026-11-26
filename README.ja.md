@@ -176,6 +176,7 @@ cargo build --release -p pdfcraft -p pdfcraft-cli
 | **Windows OCR** | 不要(Windows 10/11 の日本語言語パックに含まれる) | 速い・高精度。縦書きの列も正しい順で読む。縦書きと横書きが混在するページは段落ごとに分けて認識 |
 | Tesseract | [Tesseract](https://github.com/UB-Mannheim/tesseract/wiki) と `jpn.traineddata`・`jpn_vert.traineddata`(縦書き用)を tessdata に入れる | Windows 以外でも使える |
 | 内蔵 (ocrs) | `cargo xtask models` | 英語のみ |
+| PP-OCRv5 | `cargo xtask models --optional` でモデル(約 170 MB)を入れる。配布版には含まれない | いちばん高精度(縦書き・表にも強い)。CPU で動くので遅い(1 ページ数秒) |
 
 - 認識結果は**透明なテキスト**としてページに重なり、検索・コピー・選択ができるようになります(見た目は変わりません)。
 - 縦書きの行も、上から下へ・右の列から順に読めるように配置されます。
@@ -188,6 +189,7 @@ cargo build --release -p pdfcraft -p pdfcraft-cli
   - 日本語を含まない文字列には何もしません。
 - 複数ページは**最大 4 ページを同時に**読み取ります(結果のページ順は変わりません)。途中で中止すると、読み取り中のページが終わった時点で止まります。同時に読む数を変えたいときは、環境変数 `PDFCRAFT_OCR_THREADS` に 1〜4 の数を入れます(1 で 1 ページずつ。パソコンのメモリが少ないときに向いています)。
 - 認識できる言語は Windows の言語設定に入っている OCR 用の言語だけです。日本語が無い場合は **設定 ▸ 時刻と言語 ▸ 言語と地域** で日本語を追加します。
+- **PP-OCRv5** は、モデルを入れた環境でだけエンジンの一覧に出ます。読める言語は日本語(横書き・縦書き)、中国語、英語です。手元の比較では、実際のカタログ 40 ページで文字の誤り率(中央値)が Windows OCR の約 9% に対して約 4% でした([docs/ocr-ppocr.ja.md](docs/ocr-ppocr.ja.md))。最初の 1 回はモデルの読み込みに数秒かかります。「自動」エンジンではまだ使いません。
 
 ## 7. 電子印鑑
 
@@ -460,7 +462,7 @@ pwsh packaging/windows/package.ps1 -Arch x64
 | 縦書きの抽出 | `crates/render/src/text/device.rs`(`merge_column`) |
 | 右綴じ | `crates/ui-egui/src/canvas/zoom.rs`・`navigation.rs`・`organize.rs` |
 | 和暦 | `crates/edit/src/era.rs`、`crates/engine/src/dates.rs` |
-| OCR | `crates/ocr/src/windows_ocr.rs`・`blocks.rs`・`tesseract.rs`、`crates/engine/src/ocr/layer.rs` |
+| OCR | `crates/ocr/src/windows_ocr.rs`・`blocks.rs`・`tesseract.rs`・`ppocr.rs`、`crates/engine/src/ocr/layer.rs` |
 | MCP 登録 | `apps/pdfcraft-cli/src/mcp_install.rs` |
 | 電子印鑑 | `crates/engine/src/seal.rs`、`crates/ui-egui/src/tools/seal_ui.rs` |
 | 原稿用紙・便箋 | `crates/edit/src/added/vertical_doc.rs`、`crates/ui-egui/src/workflows/vertical_ui.rs` |

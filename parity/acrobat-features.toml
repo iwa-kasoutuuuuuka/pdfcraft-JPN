@@ -10576,3 +10576,16 @@ commands = ["ocr.recognize"]
 tools = ["ocr_recognize", "ocr_words"]
 evidence = ["crates/engine/src/ocr.rs::pages_are_read_in_parallel_and_come_back_in_order", "crates/engine/src/ocr.rs::stopping_a_parallel_job_returns_what_was_read"]
 notes = "PdfCraft-JPN addition, not an Acrobat feature. OcrJob::run renders pages one after another and recognises up to PDFCRAFT_OCR_THREADS (default: the cores, at most 4) at once; a stop drops the queued pages, progress counts finished pages, an engine panic skips that page with its message, tesseract runs with OMP_THREAD_LIMIT=1. The speed-up was not measured on a real scan."
+
+
+[[feature]]
+id = "ocr.ppocr-engine"
+title = "PP-OCRv5 engine: high-accuracy Japanese OCR (horizontal and vertical) on the CPU"
+area = "I"
+tier = "P2"
+milestone = "M10"
+status = "partial"
+commands = ["ocr.recognize"]
+tools = ["ocr_recognize", "ocr_words", "ocr_status"]
+evidence = ["crates/ocr/src/ppocr.rs::db_boxes_are_the_regions_grown_and_scaled_to_the_page", "crates/ocr/src/ppocr.rs::ctc_collapses_repeats_drops_blanks_and_places_characters", "crates/ocr/src/ppocr.rs::a_horizontal_line_becomes_one_word_per_kanji_and_one_per_latin_run", "crates/ocr/src/ppocr.rs::a_vertical_page_reads_columns_right_to_left_with_characters_down_the_column", "crates/ocr/src/ppocr.rs::network_outputs_are_not_trusted", "crates/ocr/src/ppocr.rs::db_post_processing_survives_hostile_maps", "crates/ocr/src/ppocr.rs::blank_and_huge_pages", "crates/ocr/src/ppocr.rs::files_other_than_the_attributed_ones_are_refused", "crates/engine/src/ocr.rs::ppocr_is_a_named_engine_that_says_when_its_models_are_missing", "crates/automation/tests/it/automation.rs::ppocr_engine_through_the_tools"]
+notes = "PdfCraft-JPN addition, not an Acrobat feature. engine ppocr runs PaddlePaddle's PP-OCRv5 server detection and recognition networks (Apache-2.0) on rten: DB boxes, columns turned for vertical pages (ja-vert forces it), recognition in batches of equal padded width, greedy CTC with each CJK character placed as its own word. Each model file must have the SHA-256 ATTRIBUTION.toml records before it is parsed, output shapes are checked, and boxes are capped at 4000 a page. Partial, because the models are optional (`cargo xtask models --optional`, not packaged until the P4 decision of docs/ocr-ppocr.ja.md): the engine is listed only where they are installed, and the tests that read with the real networks (`the_real_models_read_when_installed`, the reading half of `ppocr_engine_through_the_tools`) skip without them, so CI checks the pipeline on synthetic network outputs only. Measured locally (docs/ocr-ppocr.ja.md): unordered CER 0.8% on 30 synthetic pages and a 3.7% median on 40 real catalogue pages, against 4.1% and 9.1–9.6% for Windows OCR, at 0.5 to 0.6 pages a second on the CPU. Not done: the GPU path (P2), use in Automatic (P3), packaging (P4)."

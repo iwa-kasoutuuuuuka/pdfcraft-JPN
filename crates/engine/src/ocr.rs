@@ -42,6 +42,10 @@ pub enum EngineChoice {
     /// The Windows built-in OCR (`Windows.Media.Ocr`): Windows only, reads the OCR languages
     /// Windows has installed (Japanese, horizontal and vertical, included).
     Windows,
+    /// PP-OCRv5 (server) on rten, on the CPU: the high-accuracy Japanese engine
+    /// (`pdfcraft_ocr::ppocr`). Its models are optional (`cargo xtask models --optional`) and not
+    /// packaged, so it can run only where they were installed; Automatic does not use it yet.
+    PpOcr,
     /// Ensemble: the default engine first, the other one as a secondary when available. On
     /// Windows, Japanese, Chinese and Korean (and any language Tesseract lacks) go to Windows OCR.
     Auto,
@@ -54,6 +58,7 @@ impl EngineChoice {
         match s.trim().to_ascii_lowercase().as_str() {
             "tesseract" => EngineChoice::Tesseract,
             "windows" | "windows-ocr" | "winocr" => EngineChoice::Windows,
+            "ppocr" | "pp-ocr" | "ppocrv5" | "pp-ocrv5" => EngineChoice::PpOcr,
             "auto" | "automatic" | "ensemble" => EngineChoice::Auto,
             _ => EngineChoice::Ocrs,
         }
@@ -65,7 +70,7 @@ impl EngineChoice {
     pub fn default_strategy(self) -> MergeStrategy {
         match self {
             EngineChoice::Auto => MergeStrategy::ConfidenceWeighted,
-            EngineChoice::Ocrs | EngineChoice::Tesseract | EngineChoice::Windows => MergeStrategy::PrimaryOnly,
+            EngineChoice::Ocrs | EngineChoice::Tesseract | EngineChoice::Windows | EngineChoice::PpOcr => MergeStrategy::PrimaryOnly,
         }
     }
 
@@ -75,6 +80,7 @@ impl EngineChoice {
             EngineChoice::Ocrs => "ocrs",
             EngineChoice::Tesseract => "tesseract",
             EngineChoice::Windows => "windows",
+            EngineChoice::PpOcr => "ppocr",
             EngineChoice::Auto => "auto",
         }
     }
@@ -272,6 +278,9 @@ pub struct Recognizers {
 
 struct EngineCache {
     ocrs: Option<Arc<dyn Recognizer>>,
+    /// PP-OCRv5, loaded the first time a job asks for it (a few seconds: two 85 MB networks,
+    /// hashed before they are parsed) and kept for the session.
+    ppocr: Option<Arc<dyn Recognizer>>,
 }
 
 /// The engines built so far (see [`recognizers`] and [`install`]).
@@ -282,7 +291,7 @@ static ENGINES: Mutex<Option<EngineCache>> = Mutex::new(None);
 /// then on [`recognizers`] hands it out and the engine counts as available.
 pub fn install(ocr: Ocr) -> Arc<dyn Recognizer> {
     let ocrs: Arc<dyn Recognizer> = Arc::new(pdfcraft_ocr::OcrsRecognizer::from_ocr(ocr));
-    ENGINES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(|| EngineCache { ocrs: None }).ocrs = Some(ocrs.clone());
+    ENGINES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(|| EngineCache { ocrs: None, ppocr: None }).ocrs = Some(ocrs.clone());
     ocrs
 }
 
@@ -533,7 +542,51 @@ pub fn engines_status_for(settings: &OcrSettings) -> Vec<EngineStatus> {
     }
     let windows = windows_engine().is_some();
     out.push(EngineStatus { id: "windows", available: windows, why_not: (!windows).then(windows_unavailable), program: None, version: None });
+    let ppocr = ppocr_loaded() || pdfcraft_ocr::ppocr::PpOcrModels::find().is_some();
+    out.push(EngineStatus { id: "ppocr", available: ppocr, why_not: (!ppocr).then(ppocr_missing), program: None, version: None });
     out
+}
+
+/// Whether PP-OCRv5 has been loaded this session.
+fn ppocr_loaded() -> bool {
+    ENGINES.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|c| c.ppocr.is_some())
+}
+
+/// Why PP-OCRv5 cannot run (its models are optional and not packaged).
+fn ppocr_missing() -> String {
+    pdfcraft_ocr::OcrError::NoPpOcrModels.to_string()
+}
+
+/// Whether the PP-OCRv5 models are installed (or loaded), remembered like
+/// [`models_installed_cached`] so per-frame UI checks do not search the disk.
+#[cfg(not(target_arch = "wasm32"))]
+fn ppocr_installed_cached() -> bool {
+    static MODELS: Mutex<Option<(bool, Instant)>> = Mutex::new(None);
+    if ppocr_loaded() {
+        return true;
+    }
+    let mut slot = MODELS.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some((found, at)) = *slot
+        && probe_fresh(found, at, Instant::now())
+    {
+        return found;
+    }
+    let found = pdfcraft_ocr::ppocr::PpOcrModels::find().is_some();
+    *slot = Some((found, Instant::now()));
+    found
+}
+
+/// The web build has no model files, and nothing downloads the PP-OCRv5 ones.
+#[cfg(target_arch = "wasm32")]
+fn ppocr_installed_cached() -> bool {
+    false
+}
+
+/// Whether the engine dropdown offers PP-OCRv5: only where its optional models are installed
+/// (releases do not package them yet, so a release build never lists an engine it cannot
+/// run). Never waits: the answer is cached like the other engines'.
+pub fn ppocr_offered() -> bool {
+    ppocr_installed_cached()
 }
 
 /// The Windows built-in OCR engine, when this is Windows with at least one OCR language.
@@ -601,16 +654,29 @@ pub fn recognizers(settings: &OcrSettings) -> Result<Recognizers, String> {
     let tesseract =
         if matches!(settings.engine, EngineChoice::Tesseract | EngineChoice::Auto) { tesseract_engine(configured.as_deref()) } else { None };
     let mut slot = ENGINES.lock().unwrap_or_else(|e| e.into_inner());
-    let cache = slot.get_or_insert_with(|| EngineCache { ocrs: None });
+    let cache = slot.get_or_insert_with(|| EngineCache { ocrs: None, ppocr: None });
     if cache.ocrs.is_none() {
         // Cheap to re-attempt while the models are missing; expensive work is cached forever.
         cache.ocrs = pdfcraft_ocr::OcrsRecognizer::find().ok().map(|r| Arc::new(r) as Arc<dyn Recognizer>);
     }
     let ocrs = cache.ocrs.clone();
+    let mut ppocr = cache.ppocr.clone();
+    drop(slot);
+    if settings.engine == EngineChoice::PpOcr && ppocr.is_none() {
+        // Only a job that asks for it loads it, outside the lock (it takes seconds, and the UI
+        // asks `ppocr_loaded` every frame). A failed load (no models, or files that are not
+        // the attributed ones) is retried by the next job, and says why. Two jobs starting at
+        // once may both load; the first one stored is kept.
+        let loaded = Arc::new(pdfcraft_ocr::ppocr::PpOcr::find().map_err(|e| e.to_string())?) as Arc<dyn Recognizer>;
+        let mut slot = ENGINES.lock().unwrap_or_else(|e| e.into_inner());
+        let cache = slot.get_or_insert_with(|| EngineCache { ocrs: None, ppocr: None });
+        ppocr = Some(cache.ppocr.get_or_insert(loaded).clone());
+    }
     match settings.engine {
         EngineChoice::Ocrs => Ok(Recognizers { primary: ocrs.ok_or_else(models_missing)?, secondary: None }),
         EngineChoice::Tesseract => Ok(Recognizers { primary: tesseract.ok_or_else(tesseract_unavailable)?, secondary: None }),
         EngineChoice::Windows => Ok(Recognizers { primary: windows_engine().ok_or_else(windows_unavailable)?, secondary: None }),
+        EngineChoice::PpOcr => Ok(Recognizers { primary: ppocr.ok_or_else(ppocr_missing)?, secondary: None }),
         EngineChoice::Auto => {
             if let Some(w) = windows_engine() {
                 let names: Option<Vec<String>> = tesseract.as_ref().map(|t| t.languages().into_iter().map(|(c, _)| c).collect());
@@ -682,6 +748,7 @@ pub fn engine_unavailable_reason(engine: EngineChoice) -> Option<String> {
         EngineChoice::Ocrs => (!ocrs).then(models_missing),
         EngineChoice::Tesseract => tesseract.err(),
         EngineChoice::Windows => windows_engine().is_none().then(windows_unavailable),
+        EngineChoice::PpOcr => (!ppocr_installed_cached()).then(ppocr_missing),
         EngineChoice::Auto => match (ocrs, tesseract) {
             (true, _) | (false, Ok(())) => None,
             (false, Err(why)) => Some(format!("{}; {why}", models_missing())),
@@ -718,6 +785,9 @@ fn offered_from(engine: EngineChoice, tess: &TessLangs) -> Vec<(&'static str, &'
     };
     let out: Vec<(&'static str, &'static str)> = match engine {
         EngineChoice::Ocrs | EngineChoice::Windows => return ocrs.to_vec(),
+        EngineChoice::PpOcr => {
+            return pdfcraft_ocr::ppocr::PPOCR_LANGUAGES.iter().filter_map(|(code, _)| LANGUAGES.iter().find(|l| l.0 == *code).copied()).collect();
+        }
         EngineChoice::Tesseract => from_tess,
         EngineChoice::Auto => {
             let mut all = ocrs.to_vec();
@@ -738,7 +808,7 @@ fn offered_from(engine: EngineChoice, tess: &TessLangs) -> Vec<(&'static str, &'
 /// probed) is the caller's to keep; this list only decides what can be newly chosen.
 pub fn offered_languages(settings: &OcrSettings) -> Vec<(&'static str, &'static str)> {
     #[cfg(not(target_arch = "wasm32"))]
-    let tess = if matches!(settings.engine, EngineChoice::Ocrs | EngineChoice::Windows) {
+    let tess = if matches!(settings.engine, EngineChoice::Ocrs | EngineChoice::Windows | EngineChoice::PpOcr) {
         TessLangs::Missing
     } else {
         match tesseract_engine_now(configured_tesseract(settings).as_deref()) {
@@ -1930,6 +2000,35 @@ mod tests {
 
     /// The selector refuses an unusable engine with its cause named, and resolves the ensemble
     /// when both engines exist (here: whatever this machine has for ocrs and tesseract).
+    /// PP-OCRv5 is named `ppocr` (and its spellings), reads alone, offers the languages its
+    /// model reads, and without its optional models the selector says which files are missing.
+    #[test]
+    fn ppocr_is_a_named_engine_that_says_when_its_models_are_missing() {
+        for name in ["ppocr", " PP-OCR ", "ppocrv5", "PP-OCRv5"] {
+            assert_eq!(EngineChoice::parse(name), EngineChoice::PpOcr, "{name}");
+        }
+        assert_eq!(EngineChoice::PpOcr.name(), "ppocr");
+        assert_eq!(EngineChoice::PpOcr.default_strategy(), MergeStrategy::PrimaryOnly);
+        let codes: Vec<&str> = offered_from(EngineChoice::PpOcr, &TessLangs::Missing).iter().map(|l| l.0).collect();
+        assert_eq!(codes, ["ja", "ja-vert", "zh", "en"]);
+        let status = engines_status();
+        let ppocr = status.iter().find(|e| e.id == "ppocr").expect("ppocr is reported");
+        let settings = OcrSettings { engine: EngineChoice::PpOcr, ..Default::default() };
+        match recognizers(&settings) {
+            Ok(r) => {
+                assert!(ppocr.available);
+                assert_eq!(r.primary.id(), "ppocr");
+                assert!(r.secondary.is_none());
+            }
+            Err(e) => {
+                assert!(!ppocr.available && ppocr.why_not.as_deref() == Some(e.as_str()), "{e}");
+                assert!(e.contains("PP-OCRv5_server_det.onnx") && e.contains("PDFCRAFT_MODELS"), "{e}");
+                assert_eq!(engine_unavailable_reason(EngineChoice::PpOcr).as_deref(), Some(e.as_str()));
+                assert!(!ppocr_offered(), "a build without the models never lists the engine");
+            }
+        }
+    }
+
     #[test]
     fn selector_names_the_missing_engine() {
         let tesseract = OcrSettings { engine: EngineChoice::Tesseract, ..Default::default() };

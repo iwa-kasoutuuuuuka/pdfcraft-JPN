@@ -25,6 +25,7 @@ pub mod confidence;
 pub mod ja_fix;
 pub mod merge;
 mod ocrs;
+pub mod ppocr;
 pub mod preprocess;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tesseract;
@@ -58,6 +59,10 @@ pub const MAX_PIXELS: u32 = 64_000_000;
 pub enum OcrError {
     #[error("the text recognition models are not installed (reinstall PdfCraft, or set PDFCRAFT_MODELS to the folder that holds them)")]
     NoModels,
+    #[error(
+        "the PP-OCRv5 models are not installed (they are optional and not part of this installation; put PP-OCRv5_server_det.onnx, PP-OCRv5_server_rec.onnx and PP-OCRv5_server_rec.yml in the models folder, or set PDFCRAFT_MODELS to the folder that holds them)"
+    )]
+    NoPpOcrModels,
     #[error("loading {0}: {1}")]
     Load(String, String),
     #[error("text recognition failed: {0}")]

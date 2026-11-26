@@ -1543,6 +1543,7 @@ fn engine_label(engine: EngineChoice) -> &'static str {
         EngineChoice::Ocrs => "ocrs",
         EngineChoice::Tesseract => "Tesseract",
         EngineChoice::Windows => tl!("Windows OCR"),
+        EngineChoice::PpOcr => tl!("PP-OCRv5"),
     }
 }
 
@@ -1562,12 +1563,17 @@ fn strategy_label(strategy: MergeStrategy) -> &'static str {
 fn engine_combo(ui: &mut egui::Ui, engine: &mut EngineChoice, strategy: &mut MergeStrategy) {
     ocr_ui::keep_asking_while_probing(ui.ctx());
     craft_ui::ComboBox::from_id_salt("ocr-verify-engine").width(120.0).selected_text(engine_label(*engine)).show_ui(ui, |ui| {
-        for (choice, label) in [
+        let mut choices = vec![
             (EngineChoice::Auto, tl!("Automatic")),
             (EngineChoice::Ocrs, "ocrs"),
             (EngineChoice::Tesseract, "Tesseract"),
             (EngineChoice::Windows, tl!("Windows OCR")),
-        ] {
+        ];
+        // Only where its optional models are installed (releases do not package them).
+        if pdfcraft_engine::ocr::ppocr_offered() || *engine == EngineChoice::PpOcr {
+            choices.push((EngineChoice::PpOcr, tl!("PP-OCRv5")));
+        }
+        for (choice, label) in choices {
             let why = pdfcraft_engine::ocr::engine_unavailable_reason(choice);
             let resp = ui.add_enabled(why.is_none(), egui::Button::selectable(*engine == choice, label));
             let clicked = resp.clicked();
@@ -1581,6 +1587,9 @@ fn engine_combo(ui: &mut egui::Ui, engine: &mut EngineChoice, strategy: &mut Mer
                         EngineChoice::Ocrs => tl!("The built-in engine (pure Rust)"),
                         EngineChoice::Tesseract => tl!("The tesseract program, run as an external process"),
                         EngineChoice::Windows => tl!("The OCR built into Windows (no install; reads Japanese, vertical text too)"),
+                        EngineChoice::PpOcr => {
+                            tl!("PP-OCRv5, the most accurate for Japanese, vertical text too (runs on the CPU, slower than the others)")
+                        }
                     });
                 }
             }

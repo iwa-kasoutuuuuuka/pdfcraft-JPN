@@ -297,12 +297,17 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
                 EngineChoice::Ocrs => tl!("Built-in"),
                 EngineChoice::Tesseract => tl!("Tesseract"),
                 EngineChoice::Windows => tl!("Windows OCR"),
+                EngineChoice::PpOcr => tl!("PP-OCRv5"),
             };
             craft_ui::ComboBox::from_id_salt("ocr-engine").selected_text(engine_name).width(220.0).show_ui(ui, |ui| {
                 let mut choices: Vec<(EngineChoice, &str)> =
                     vec![(EngineChoice::Auto, "Automatic"), (EngineChoice::Ocrs, "Built-in"), (EngineChoice::Tesseract, "Tesseract")];
                 if cfg!(windows) || d.engine == EngineChoice::Windows {
                     choices.push((EngineChoice::Windows, "Windows OCR"));
+                }
+                // Only where its optional models are installed (releases do not package them).
+                if pdfcraft_engine::ocr::ppocr_offered() || d.engine == EngineChoice::PpOcr {
+                    choices.push((EngineChoice::PpOcr, "PP-OCRv5"));
                 }
                 for (choice, name) in choices {
                     ui.selectable_value(&mut d.engine, choice, tl!(name));
@@ -421,7 +426,9 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> (boo
         // Said in the interface's language: the built-in engine's missing models get the
         // notice users know; Tesseract's reasons are catalog keys of their own.
         let text = match d.engine {
-            pdfcraft_engine::ocr::EngineChoice::Tesseract | pdfcraft_engine::ocr::EngineChoice::Windows => crate::i18n::t(&why).to_string(),
+            pdfcraft_engine::ocr::EngineChoice::Tesseract | pdfcraft_engine::ocr::EngineChoice::Windows | pdfcraft_engine::ocr::EngineChoice::PpOcr => {
+                crate::i18n::t(&why).to_string()
+            }
             _ => tl!("Text recognition isn't installed: its model files are missing. Reinstall PdfCraft, or set PDFCRAFT_MODELS to the folder that holds them.")
                 .to_string(),
         };
