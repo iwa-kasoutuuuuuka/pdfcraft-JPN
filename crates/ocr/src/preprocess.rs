@@ -43,7 +43,8 @@ const SUGGEST_SIDE: f64 = 1400.0;
 const SUGGEST_MIN_SKEW: f64 = 0.5;
 
 /// Turn on, for this page alone, the steps it needs: `base` plus `auto_rotate` when the page is
-/// turned a quarter turn or upside down, and `deskew` when its lines are tilted by at least half
+/// turned a quarter turn (on decisive evidence only, so an upright vertical Japanese page is
+/// never turned on its side) or upside down, and `deskew` when its lines are tilted by at least half
 /// a degree. A straight, upright page gets `base` back, so it is never resampled for nothing.
 /// Denoising and binarizing are never suggested: they help some scans and hurt others, so only
 /// the user's own choice turns them on. The page is judged on a copy shrunk to at most 1400 px
@@ -56,7 +57,9 @@ pub fn suggest(image: &OcrImage, base: PreprocessOptions) -> PreprocessOptions {
     let longest = f64::from(image.width.max(image.height));
     let shrunk = if longest > SUGGEST_SIDE { resize_bilinear(image, SUGGEST_SIDE / longest).ok() } else { None };
     let probe = shrunk.as_ref().unwrap_or(image);
-    if !options.auto_rotate && detect_orientation(probe) != 0 {
+    // A quarter turn needs decisive evidence here: an upright vertical Japanese page must not
+    // be turned on its side (see `SUGGEST_QUARTER_TURN_MARGIN`).
+    if !options.auto_rotate && detect_orientation_with(probe, SUGGEST_QUARTER_TURN_MARGIN) != 0 {
         // A turned page's tilt can only be judged once it is upright: let deskew look again.
         options.auto_rotate = true;
         options.deskew = true;
@@ -261,6 +264,21 @@ type QuarterTurns = u32;
 /// descenders) picks the quarter turn, with a 4%-of-ink margin. Anything less clear is a
 /// no-op (`0`), and images under 32 px are never judged.
 fn detect_orientation(image: &OcrImage) -> QuarterTurns {
+    detect_orientation_with(image, AXIS_MARGIN)
+}
+
+/// How much sharper the winning axis must band than the other for [`detect_orientation`].
+const AXIS_MARGIN: f64 = 1.3;
+/// The stricter margin [`suggest`] asks of a quarter turn it switches on by itself. A vertical
+/// (tategaki) Japanese page is upright, yet its columns band on the column axis like a turned
+/// page's lines, and ruby beside a column makes the band lopsided enough to pass the
+/// bottom-heaviness bar. Its character rows still band almost as sharply (synthetic pages measure
+/// 1.2–1.5), while a page truly on its side bands 2.4× and more; anything weaker is left alone.
+const SUGGEST_QUARTER_TURN_MARGIN: f64 = 2.0;
+
+/// [`detect_orientation`] with `quarter_turn_margin` as the margin a quarter turn (90/270) must
+/// win its axis by (the half turn keeps [`AXIS_MARGIN`]).
+fn detect_orientation_with(image: &OcrImage, quarter_turn_margin: f64) -> QuarterTurns {
     if image.min_side() < 32 {
         return 0;
     }
@@ -287,7 +305,7 @@ fn detect_orientation(image: &OcrImage) -> QuarterTurns {
     let row_axis = vertical_pair.0.max(vertical_pair.1);
     let column_axis = horizontal_pair.0.max(horizontal_pair.1);
     if row_axis >= column_axis {
-        if row_axis < column_axis * 1.3 {
+        if row_axis < column_axis * AXIS_MARGIN {
             return 0; // the axes are too close to call
         }
         if asyms[0] > 0.15 * total as f64 {
@@ -298,7 +316,7 @@ fn detect_orientation(image: &OcrImage) -> QuarterTurns {
             0 // the bands are not clearly bottom-heavy either way: no-op
         }
     } else {
-        if column_axis < row_axis * 1.3 {
+        if column_axis < row_axis * quarter_turn_margin.max(AXIS_MARGIN) {
             return 0;
         }
         if asyms[1] > 0.15 * total as f64 {
@@ -657,7 +675,11 @@ mod tests {
     /// The same fixture pre-rotated by k quarter turns clockwise, built independently of the
     /// crate's rotation (so the test cannot pass by a shared bug).
     fn rotated(k: u32) -> OcrImage {
-        let src = l_line();
+        turned(&l_line(), k)
+    }
+
+    /// `src` turned k quarter turns clockwise, pixel by pixel (black pixels only).
+    fn turned(src: &OcrImage, k: u32) -> OcrImage {
         let (w, h) = (src.width as usize, src.height as usize);
         let (nw, nh) = if k.is_multiple_of(2) { (src.width, src.height) } else { (src.height, src.width) };
         let mut out = white(nw, nh);
@@ -1049,5 +1071,117 @@ mod tests {
             }
         }
         assert!(suggest(&img, PreprocessOptions::default()).deskew);
+    }
+
+    /// A deterministic pseudo-random source for the page fixtures below.
+    fn lcg(seed: u64) -> impl FnMut() -> u32 {
+        let mut s = seed;
+        move || {
+            s = s.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            (s >> 33) as u32
+        }
+    }
+
+    /// One CJK-like glyph in a `cell`-px square at (x, y): a few horizontal and vertical
+    /// strokes spread over the cell, roughly balanced the way kanji are.
+    fn glyph(img: &mut OcrImage, x: u32, y: u32, cell: u32, rnd: &mut impl FnMut() -> u32) {
+        let strokes = rnd() % 4 + 3;
+        for _ in 0..strokes {
+            if rnd().is_multiple_of(2) {
+                let len = cell / 2 + rnd() % (cell / 2);
+                let x0 = x + rnd() % (cell - len + 1);
+                fill(img, x0, y + 2 + rnd() % (cell - 6), len.min(cell - (x0 - x)), 3);
+            } else {
+                let len = cell / 2 + rnd() % (cell / 2);
+                let y0 = y + rnd() % (cell - len + 1);
+                fill(img, x + 2 + rnd() % (cell - 6), y0, 3, len.min(cell - (y0 - y)));
+            }
+        }
+    }
+
+    /// A vertical (tategaki) Japanese page: columns of glyphs read top to bottom, right to
+    /// left; ruby beside some columns on their right, hugging the column (`ruby_gap` px off
+    /// it); the comma and full stop of vertical text in the top-right corner of their cell;
+    /// and a few short horizontal marks.
+    fn tategaki_page(seed: u64, ruby_gap: u32, stagger: bool) -> OcrImage {
+        let (w, h) = (1000u32, 1400u32);
+        let mut img = white(w, h);
+        let mut rnd = lcg(seed);
+        let (cell, pitch) = (36u32, 60u32);
+        let mut col_x = w - 100 - cell;
+        while col_x > 100 {
+            // Staggered columns (indents, compressed punctuation) break the character grid.
+            let mut y = if stagger { 100 + rnd() % (cell + 4) } else { 100 };
+            let column_end = 1300 - rnd() % 3 * 200; // some columns end early
+            while y + cell < column_end {
+                match rnd() % 14 {
+                    0 => fill(&mut img, col_x + cell - 12, y + 2, 9, 9), // 、/。 top right
+                    1 => fill(&mut img, col_x + 8, y + cell / 2, 20, 3), // a short horizontal mark
+                    _ => glyph(&mut img, col_x, y, cell, &mut rnd),
+                }
+                if rnd().is_multiple_of(6) {
+                    // Ruby: two small kana to the right of this glyph.
+                    let rx = col_x + cell + ruby_gap;
+                    glyph(&mut img, rx, y, 14, &mut rnd);
+                    glyph(&mut img, rx, y + 17, 14, &mut rnd);
+                }
+                y += cell + 4;
+            }
+            col_x = col_x.saturating_sub(pitch);
+        }
+        img
+    }
+
+    /// A horizontal page of bottom-heavy text lines (baselines and descenders carry the ink),
+    /// the kind orientation detection can read.
+    fn yokogaki_page() -> OcrImage {
+        let (w, h) = (1000u32, 1400u32);
+        let mut img = white(w, h);
+        let mut rnd = lcg(11);
+        for base in (160..1300u32).step_by(60) {
+            let mut x = 100u32;
+            while x < 880 {
+                fill(&mut img, x, base - 30, 6, 30); // a stem down to the baseline
+                fill(&mut img, x, base - 8, 24, 8); // a heavy baseline foot
+                x += 30 + rnd() % 10;
+            }
+        }
+        img
+    }
+
+    /// A vertical Japanese page is upright: its columns band sharply on the column axis, but
+    /// that is the way it is written, not a quarter turn. `suggest` must not turn it (that
+    /// would break vertical recognition), whether or not ruby hugs the columns.
+    #[test]
+    fn suggest_does_not_turn_a_vertical_japanese_page() {
+        let mut fooled_the_plain_detector = 0;
+        for seed in 1..=6u64 {
+            for ruby_gap in [0u32, 1, 3] {
+                for stagger in [false, true] {
+                    let page = tategaki_page(seed, ruby_gap, stagger);
+                    if detect_orientation(&page) != 0 {
+                        fooled_the_plain_detector += 1;
+                    }
+                    let got = suggest(&page, PreprocessOptions::default());
+                    assert!(!got.auto_rotate, "seed {seed}, ruby gap {ruby_gap}, stagger {stagger}: {got:?}");
+                }
+            }
+        }
+        // The fixture is a real trap: with only the plain 1.3 margin some of these pages
+        // (ruby hugging the column) read as a quarter turn.
+        assert!(fooled_the_plain_detector > 0);
+    }
+
+    /// A horizontal page is left alone upright and still turned when it truly sits a quarter
+    /// turn (either way) or upside down.
+    #[test]
+    fn suggest_still_turns_a_horizontal_page_scanned_sideways() {
+        let page = yokogaki_page();
+        assert!(!suggest(&page, PreprocessOptions::default()).auto_rotate, "upright");
+        for k in 1..4u32 {
+            let scanned = turned(&page, k);
+            assert_eq!(detect_orientation(&scanned), (4 - k) % 4, "turned {k}");
+            assert!(suggest(&scanned, PreprocessOptions::default()).auto_rotate, "turned {k}");
+        }
     }
 }

@@ -168,11 +168,19 @@ impl PdfCraftApp {
             }
             app.export_status = Some(status);
         };
-        let dialog = rfd::AsyncFileDialog::new()
-            .add_filter_any_case("CSV", &["csv"])
-            .set_title(tl!("Save the tables as").to_string())
-            .set_file_name(format!("{stem}.csv"));
-        self.ask_one(crate::pickers::Ask::Save(dialog), None, start);
+        // The file picker exists only on the desktop; the web build has no save dialog here.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let dialog = rfd::AsyncFileDialog::new()
+                .add_filter_any_case("CSV", &["csv"])
+                .set_title(tl!("Save the tables as").to_string())
+                .set_file_name(format!("{stem}.csv"));
+            self.ask_one(crate::pickers::Ask::Save(dialog), None, start);
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let _ = (stem, start);
+        }
     }
 }
 

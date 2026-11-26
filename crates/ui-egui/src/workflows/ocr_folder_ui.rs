@@ -228,14 +228,19 @@ pub(crate) fn body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens) -> bool
             close = true;
         }
     });
+    // The folder picker exists only on the desktop (the web build has no folders to choose).
+    #[cfg(not(target_arch = "wasm32"))]
     if pick_folder {
         let dialog = rfd::AsyncFileDialog::new().set_title(tl!("Choose the folder of PDF files").to_string());
         app.ask_one(crate::pickers::Ask::Folder(dialog), None, |app, dir| app.ocr_folder.folder = Some(dir));
     }
+    #[cfg(not(target_arch = "wasm32"))]
     if pick_output {
         let dialog = rfd::AsyncFileDialog::new().set_title(tl!("Choose a folder for the searchable files").to_string());
         app.ask_one(crate::pickers::Ask::Folder(dialog), None, |app, dir| app.ocr_folder.output_dir = Some(dir));
     }
+    #[cfg(target_arch = "wasm32")]
+    let _ = (pick_folder, pick_output);
     if start {
         app.start_ocr_folder();
         close = false;
