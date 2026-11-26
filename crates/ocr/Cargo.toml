@@ -10,6 +10,11 @@ repository.workspace = true
 [lints]
 workspace = true
 
+[features]
+# PP-OCRv5 on ONNX Runtime's CUDA provider, for `examples/ocr_bench` on a local GPU (P2 of
+# docs/ocr-ppocr.ja.md). Optional by the owner's decision: never part of a release.
+ort-cuda = ["dep:ort"]
+
 [dependencies]
 pdfcraft-fonts = { workspace = true }
 ocrs = { version = "0.13.1", default-features = false, features = ["rten"] }
@@ -21,9 +26,16 @@ thiserror.workspace = true
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # The page image is handed to the external tesseract process as a PNG.
 png = "0.18"
+# Optional, local benchmarking only (`ort-cuda`): never enabled by a release build. ONNX Runtime is
+# loaded at run time from ORT_DYLIB_PATH (load-dynamic): nothing is downloaded or linked at build time.
+ort = { version = "=2.0.0-rc.15", optional = true, default-features = false, features = ["std", "load-dynamic", "cuda"] }
 
 [dev-dependencies]
 tempfile = "3.27"
+# Glyph outlines for the synthetic scans of `examples/ocr_bench/` (already in the tree via pdfcraft-fonts).
+skrifa = "0.44"
+# The PP-OCRv5 probe in `examples/ocr_bench/ppocr.rs` builds rten tensors (same version as rten).
+rten-tensor = "0.26.0"
 
 [target.'cfg(windows)'.dependencies]
 # Windows.Media.Ocr, the OS's built-in recogniser (safe projections only; same 0.62 line as the app).
