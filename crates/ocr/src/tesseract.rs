@@ -152,17 +152,17 @@ pub fn program_is_usable(program: &Path) -> bool {
 /// executable FILE (on Unix the executable bits must be set; elsewhere being a file is what
 /// the OS requires). A directory or a missing file is simply unavailable — never a panic.
 fn program_is_executable(program: &Path) -> bool {
-    if !program.is_absolute() || !program.is_file() {
-        return false;
-    }
+    // A relative path would resolve against the current directory, so only an absolute file
+    // counts; anything else is unavailable.
+    let is_absolute_file = program.is_absolute() && program.is_file();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::metadata(program).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
+        is_absolute_file && std::fs::metadata(program).is_ok_and(|m| m.permissions().mode() & 0o111 != 0)
     }
     #[cfg(not(unix))]
     {
-        true
+        is_absolute_file
     }
 }
 
