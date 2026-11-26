@@ -82,6 +82,8 @@ pub const TABLE: &[(&str, Class)] = &[
     ("platform", Class::Layer(7)),
     ("ui-common", Class::Layer(7)),
     ("ui-egui", Class::Layer(7)),
+    // PP-OCRv5 on the GPU (wgpu): the program registers it with the engine (docs/ocr-ppocr.ja.md §4.5).
+    ("ocr-gpu", Class::Layer(7)),
     ("automation", Class::Layer(7)),
     // test support
     ("testkit", Class::Testkit),

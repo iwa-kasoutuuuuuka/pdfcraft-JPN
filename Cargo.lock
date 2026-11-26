@@ -4331,6 +4331,7 @@ dependencies = [
  "fmv-macos-events",
  "log",
  "pdfcraft-engine",
+ "pdfcraft-ocr-gpu",
  "pdfcraft-platform",
  "pdfcraft-ui-egui",
  "pollster 1.0.1",
@@ -4635,6 +4636,14 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "windows",
+]
+
+[[package]]
+name = "pdfcraft-ocr-gpu"
+version = "0.18.1"
+dependencies = [
+ "pdfcraft-ocr",
+ "wgpu",
 ]
 
 [[package]]

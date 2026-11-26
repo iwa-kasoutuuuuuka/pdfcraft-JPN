@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use pdfcraft_render::text::TextFilter;
 use pdfcraft_render::{PageInfo, PageRenderer, RenderConfig, RenderRequest, RequestKind};
 
+pub use pdfcraft_ocr::ppocr::{Network, NetworkFactory, Networks, take_gpu_fallback_notice};
 pub use pdfcraft_ocr::{
     ConfidenceBand, DETECTION_MODEL, LANGUAGES, Line, MergeStrategy, Models, Ocr, OcrError, OcrImage, PlacedWord, RECOGNITION_MODEL, Recognizer,
     StrategyOutcome, Word, band_for, is_suspect, lines_from_json, low_confidence,
@@ -173,6 +174,11 @@ pub struct OcrSettings {
     /// file; an invalid configuration makes the engine unavailable rather than silently
     /// searching the PATH. `None` means the PATH search decides.
     pub tesseract_path: Option<String>,
+    /// Run PP-OCRv5 on the GPU backend the program registered ([`register_gpu`]), with the CPU
+    /// as the fallback. Off by default (the owner's decision: the GPU only when the user turns
+    /// it on). Without a registered backend, or with one that fails, PP-OCRv5 reads on the CPU
+    /// and every page's notes say why. Other engines ignore it.
+    pub gpu: bool,
 }
 
 /// A recognised word whose box is at least this much covered by the page's own text is that
@@ -231,6 +237,7 @@ impl Default for OcrSettings {
             region: None,
             low_confidence_threshold: 60.0,
             tesseract_path: None,
+            gpu: false,
         }
     }
 }
@@ -279,8 +286,31 @@ pub struct Recognizers {
 struct EngineCache {
     ocrs: Option<Arc<dyn Recognizer>>,
     /// PP-OCRv5, loaded the first time a job asks for it (a few seconds: two 85 MB networks,
-    /// hashed before they are parsed) and kept for the session.
-    ppocr: Option<Arc<dyn Recognizer>>,
+    /// hashed before they are parsed) and kept for the session; with whether it was loaded
+    /// for the GPU (a job that asks for the other is loaded again).
+    ppocr: Option<(bool, Arc<dyn Recognizer>)>,
+}
+
+/// The GPU backend the program registered for PP-OCRv5 ([`register_gpu`]).
+static GPU: Mutex<Option<Arc<dyn NetworkFactory>>> = Mutex::new(None);
+
+/// Register the GPU backend PP-OCRv5 runs on when a job's [`OcrSettings::gpu`] is on. The
+/// program (L8) makes it: the engine knows no GPU API (layering). A later call replaces it.
+/// Nothing uses it until a job asks for the GPU. Jobs already running keep what they loaded.
+pub fn register_gpu(factory: Arc<dyn NetworkFactory>) {
+    *GPU.lock().unwrap_or_else(|e| e.into_inner()) = Some(factory);
+    // A PP-OCRv5 loaded for the GPU before this backend existed (on the CPU, saying there was
+    // none) is dropped, so the next GPU job loads it on this one.
+    if let Some(cache) = ENGINES.lock().unwrap_or_else(|e| e.into_inner()).as_mut()
+        && cache.ppocr.as_ref().is_some_and(|(gpu, _)| *gpu)
+    {
+        cache.ppocr = None;
+    }
+}
+
+/// The registered GPU backend's name, if any.
+pub fn gpu_backend() -> Option<String> {
+    GPU.lock().unwrap_or_else(|e| e.into_inner()).as_ref().map(|f| f.name())
 }
 
 /// The engines built so far (see [`recognizers`] and [`install`]).
@@ -552,6 +582,20 @@ fn ppocr_loaded() -> bool {
     ENGINES.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|c| c.ppocr.is_some())
 }
 
+/// Load PP-OCRv5 for a job: on the registered GPU backend when `gpu` (the CPU stays the
+/// fallback), else on the CPU.
+fn load_ppocr(gpu: bool) -> Result<Arc<dyn Recognizer>, String> {
+    use pdfcraft_ocr::ppocr::{PpOcr, PpOcrModels};
+    let models = PpOcrModels::find().ok_or_else(ppocr_missing)?;
+    let factory = if gpu { GPU.lock().unwrap_or_else(|e| e.into_inner()).clone() } else { None };
+    let engine = match (gpu, factory) {
+        (false, _) => PpOcr::load(&models),
+        (true, Some(f)) => PpOcr::load_with_gpu(&models, f.as_ref()),
+        (true, None) => PpOcr::load(&models).map(|e| e.with_gpu_refused("no GPU backend is available in this program; reading on the CPU".into())),
+    };
+    Ok(Arc::new(engine.map_err(|e| e.to_string())?) as Arc<dyn Recognizer>)
+}
+
 /// Why PP-OCRv5 cannot run (its models are optional and not packaged).
 fn ppocr_missing() -> String {
     pdfcraft_ocr::OcrError::NoPpOcrModels.to_string()
@@ -660,17 +704,24 @@ pub fn recognizers(settings: &OcrSettings) -> Result<Recognizers, String> {
         cache.ocrs = pdfcraft_ocr::OcrsRecognizer::find().ok().map(|r| Arc::new(r) as Arc<dyn Recognizer>);
     }
     let ocrs = cache.ocrs.clone();
-    let mut ppocr = cache.ppocr.clone();
+    let mut ppocr = cache.ppocr.as_ref().filter(|(gpu, _)| *gpu == settings.gpu).map(|(_, r)| r.clone());
     drop(slot);
     if settings.engine == EngineChoice::PpOcr && ppocr.is_none() {
         // Only a job that asks for it loads it, outside the lock (it takes seconds, and the UI
         // asks `ppocr_loaded` every frame). A failed load (no models, or files that are not
         // the attributed ones) is retried by the next job, and says why. Two jobs starting at
-        // once may both load; the first one stored is kept.
-        let loaded = Arc::new(pdfcraft_ocr::ppocr::PpOcr::find().map_err(|e| e.to_string())?) as Arc<dyn Recognizer>;
+        // once may both load; the first one stored for the same GPU choice is kept.
+        let loaded = load_ppocr(settings.gpu)?;
         let mut slot = ENGINES.lock().unwrap_or_else(|e| e.into_inner());
         let cache = slot.get_or_insert_with(|| EngineCache { ocrs: None, ppocr: None });
-        ppocr = Some(cache.ppocr.get_or_insert(loaded).clone());
+        let keep = match &cache.ppocr {
+            Some((gpu, existing)) if *gpu == settings.gpu => existing.clone(),
+            _ => {
+                cache.ppocr = Some((settings.gpu, loaded.clone()));
+                loaded
+            }
+        };
+        ppocr = Some(keep);
     }
     match settings.engine {
         EngineChoice::Ocrs => Ok(Recognizers { primary: ocrs.ok_or_else(models_missing)?, secondary: None }),
@@ -2027,6 +2078,43 @@ mod tests {
                 assert!(!ppocr_offered(), "a build without the models never lists the engine");
             }
         }
+    }
+
+    /// A job that asks for the GPU without a registered backend reads PP-OCRv5 on the CPU and
+    /// says why on the page; a registered backend is named.
+    #[test]
+    fn ppocr_on_the_gpu_without_a_backend_reads_on_the_cpu_and_says_why() {
+        struct Refusing;
+        impl NetworkFactory for Refusing {
+            fn name(&self) -> String {
+                "test GPU".into()
+            }
+            fn networks(&self, _: &[u8], _: &[u8]) -> Result<Networks, OcrError> {
+                Err(OcrError::Load("test".into(), "no kernels".into()))
+            }
+        }
+        let settings = OcrSettings { engine: EngineChoice::PpOcr, gpu: true, ..Default::default() };
+        assert!(!OcrSettings::default().gpu, "the GPU is off unless asked for");
+        if pdfcraft_ocr::ppocr::PpOcrModels::find().is_none() {
+            assert!(recognizers(&settings).is_err(), "no models: an error, GPU or not");
+            eprintln!("skipped the reading half: the PP-OCRv5 models are not installed");
+            return;
+        }
+        let image = OcrImage::new(64, 64, vec![255; 64 * 64 * 4]).unwrap();
+        let read = |s: &OcrSettings| {
+            let r = recognizers(s).unwrap();
+            r.primary.recognize_noted(&image, &pdfcraft_ocr::RecognizeOptions::default()).unwrap().1
+        };
+        if gpu_backend().is_none() {
+            let notes = read(&settings);
+            assert!(notes.iter().any(|n| n.contains("no GPU backend")), "{notes:?}");
+        }
+        register_gpu(Arc::new(Refusing));
+        assert_eq!(gpu_backend().as_deref(), Some("test GPU"));
+        let notes = read(&settings);
+        assert!(notes.iter().any(|n| n.contains("test GPU") && n.contains("no kernels")), "{notes:?}");
+        let cpu = OcrSettings { gpu: false, ..settings };
+        assert!(read(&cpu).is_empty(), "a CPU job has nothing to say");
     }
 
     #[test]

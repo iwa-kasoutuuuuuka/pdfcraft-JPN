@@ -510,6 +510,13 @@ fn app_creator<'a>(
                 adapter.backend
             );
             notify_software_renderer(&mut app, adapter.device_type);
+            // PP-OCRv5 may compute on the device this window draws with (the owner's decision: no
+            // second device). Nothing uses it until a recognition job turns the GPU on, which is
+            // off by default; a software adapter is refused and OCR stays on the CPU.
+            match pdfcraft_ocr_gpu::GpuContext::shared(state.device.clone(), state.queue.clone(), adapter.clone()) {
+                Ok(gpu) => pdfcraft_engine::ocr::register_gpu(std::sync::Arc::new(pdfcraft_ocr_gpu::WgpuFactory::new(gpu))),
+                Err(e) => log::info!("OCR stays on the CPU: {e}"),
+            }
         } else {
             log::info!("renderer: OpenGL (glow)");
         }
