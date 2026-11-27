@@ -938,7 +938,19 @@ impl Automation {
             "comments_paste" => self.comments_paste(&a)?,
             other => return Err(ToolError::UnknownTool(other.into())),
         };
-        Ok(vec![Content::Json(out)])
+        Ok(vec![Content::Json(self.with_gpu_notice(out))])
+    }
+
+    /// With the GPU on, the first result after OCR moved to the CPU says so, once a session
+    /// (every page's notes say it each time). The reason is the engine's, naming no file.
+    pub(crate) fn with_gpu_notice(&self, out: Value) -> Value {
+        if !self.gpu {
+            return out;
+        }
+        match pdfcraft_engine::ocr::take_gpu_fallback_notice() {
+            Some(why) => super::a11y::with_warnings(out, vec![format!("OCR moved from the GPU to the CPU for the rest of this session: {why}")]),
+            None => out,
+        }
     }
 
     /// `text_script`: Format text ▸ Superscript or Subscript on a paragraph, or on a byte range

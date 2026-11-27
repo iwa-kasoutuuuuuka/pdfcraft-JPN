@@ -654,6 +654,20 @@ fn windows_unavailable() -> String {
     }
 }
 
+/// Whether the Automatic engine reads with PP-OCRv5 alone: for Japanese (both directions)
+/// and Chinese, wherever its optional models are installed. The P3 benchmark decided it
+/// (docs/ocr-ppocr.ja.md): PP-OCRv5 read 28 of the 30 synthetic pages at least as well as
+/// Windows OCR, the engine Automatic used for these languages, and far better vertical text
+/// and tables (mean unordered CER 0.7% against 4.1%; tables 0–1% against 83–86% in reading
+/// order, bar one hard page). It is the
+/// only engine, not a second opinion: a second reading would cost a Windows or Tesseract pass
+/// on every weak page for no gain in accuracy. On the GPU it reads near Windows OCR's speed;
+/// on the CPU it is about six times slower, which the accuracy is worth for these
+/// languages. Without the models (releases, until P4), nothing changes.
+fn auto_reads_with_ppocr(settings: &OcrSettings) -> bool {
+    settings.engine == EngineChoice::Auto && matches!(settings.language.as_str(), "ja" | "ja-vert" | "zh") && ppocr_installed_cached()
+}
+
 /// Whether the Automatic engine hands `language` to Windows OCR: Japanese, Chinese and Korean
 /// (which the built-in models do not read and Tesseract needs extra data for), or any language
 /// whose Tesseract data is missing (`tess` is the installed data names; `None`: no Tesseract).
@@ -706,12 +720,19 @@ pub fn recognizers(settings: &OcrSettings) -> Result<Recognizers, String> {
     let ocrs = cache.ocrs.clone();
     let mut ppocr = cache.ppocr.as_ref().filter(|(gpu, _)| *gpu == settings.gpu).map(|(_, r)| r.clone());
     drop(slot);
-    if settings.engine == EngineChoice::PpOcr && ppocr.is_none() {
+    let auto_ppocr = auto_reads_with_ppocr(settings);
+    if (settings.engine == EngineChoice::PpOcr || auto_ppocr) && ppocr.is_none() {
         // Only a job that asks for it loads it, outside the lock (it takes seconds, and the UI
         // asks `ppocr_loaded` every frame). A failed load (no models, or files that are not
         // the attributed ones) is retried by the next job, and says why. Two jobs starting at
         // once may both load; the first one stored for the same GPU choice is kept.
-        let loaded = load_ppocr(settings.gpu)?;
+        // Automatic falls back to its other engines when the models do not load; a job that
+        // named PP-OCRv5 says why it cannot read.
+        let loaded = match load_ppocr(settings.gpu) {
+            Ok(l) => l,
+            Err(why) if settings.engine == EngineChoice::PpOcr => return Err(why),
+            Err(_) => return recognizers_without_ppocr(settings, ocrs, tesseract),
+        };
         let mut slot = ENGINES.lock().unwrap_or_else(|e| e.into_inner());
         let cache = slot.get_or_insert_with(|| EngineCache { ocrs: None, ppocr: None });
         let keep = match &cache.ppocr {
@@ -728,20 +749,30 @@ pub fn recognizers(settings: &OcrSettings) -> Result<Recognizers, String> {
         EngineChoice::Tesseract => Ok(Recognizers { primary: tesseract.ok_or_else(tesseract_unavailable)?, secondary: None }),
         EngineChoice::Windows => Ok(Recognizers { primary: windows_engine().ok_or_else(windows_unavailable)?, secondary: None }),
         EngineChoice::PpOcr => Ok(Recognizers { primary: ppocr.ok_or_else(ppocr_missing)?, secondary: None }),
-        EngineChoice::Auto => {
-            if let Some(w) = windows_engine() {
-                let names: Option<Vec<String>> = tesseract.as_ref().map(|t| t.languages().into_iter().map(|(c, _)| c).collect());
-                let installed = w.languages().iter().any(|(c, _)| *c == settings.language);
-                if installed && prefers_windows(&settings.language, names.as_deref()) {
-                    return Ok(Recognizers { primary: w, secondary: None });
-                }
-            }
-            match (ocrs, tesseract) {
-                (Some(p), s) => Ok(Recognizers { primary: p, secondary: s }),
-                (None, Some(p)) => Ok(Recognizers { primary: p, secondary: None }),
-                (None, None) => Err(models_missing()),
-            }
+        EngineChoice::Auto => match ppocr.filter(|_| auto_ppocr) {
+            Some(p) => Ok(Recognizers { primary: p, secondary: None }),
+            None => recognizers_without_ppocr(settings, ocrs, tesseract),
+        },
+    }
+}
+
+/// The Automatic engine's choice among Windows OCR, ocrs and Tesseract.
+fn recognizers_without_ppocr(
+    settings: &OcrSettings,
+    ocrs: Option<Arc<dyn Recognizer>>,
+    tesseract: Option<Arc<dyn Recognizer>>,
+) -> Result<Recognizers, String> {
+    if let Some(w) = windows_engine() {
+        let names: Option<Vec<String>> = tesseract.as_ref().map(|t| t.languages().into_iter().map(|(c, _)| c).collect());
+        let installed = w.languages().iter().any(|(c, _)| *c == settings.language);
+        if installed && prefers_windows(&settings.language, names.as_deref()) {
+            return Ok(Recognizers { primary: w, secondary: None });
         }
+    }
+    match (ocrs, tesseract) {
+        (Some(p), s) => Ok(Recognizers { primary: p, secondary: s }),
+        (None, Some(p)) => Ok(Recognizers { primary: p, secondary: None }),
+        (None, None) => Err(models_missing()),
     }
 }
 
@@ -802,6 +833,7 @@ pub fn engine_unavailable_reason(engine: EngineChoice) -> Option<String> {
         EngineChoice::PpOcr => (!ppocr_installed_cached()).then(ppocr_missing),
         EngineChoice::Auto => match (ocrs, tesseract) {
             (true, _) | (false, Ok(())) => None,
+            (false, Err(_)) if ppocr_installed_cached() => None,
             (false, Err(why)) => Some(format!("{}; {why}", models_missing())),
         },
     }
@@ -878,7 +910,12 @@ pub fn offered_languages(settings: &OcrSettings) -> Vec<(&'static str, &'static 
         }
         EngineChoice::Auto => {
             let mut all = base;
-            for l in windows_offered() {
+            let ppocr: Vec<(&'static str, &'static str)> = if ppocr_installed_cached() {
+                pdfcraft_ocr::ppocr::PPOCR_LANGUAGES.iter().filter_map(|(code, _)| LANGUAGES.iter().find(|l| l.0 == *code).copied()).collect()
+            } else {
+                Vec::new()
+            };
+            for l in windows_offered().into_iter().chain(ppocr) {
                 if !all.iter().any(|x| x.0 == l.0) {
                     all.push(l);
                 }
@@ -2077,6 +2114,33 @@ mod tests {
                 assert_eq!(engine_unavailable_reason(EngineChoice::PpOcr).as_deref(), Some(e.as_str()));
                 assert!(!ppocr_offered(), "a build without the models never lists the engine");
             }
+        }
+    }
+
+    /// Automatic reads Japanese (both directions) and Chinese with PP-OCRv5 alone wherever its
+    /// models are installed (the P3 benchmark's decision), and keeps its other engines for every
+    /// other language and where the models are missing.
+    #[test]
+    fn automatic_reads_japanese_and_chinese_with_ppocr_where_its_models_are() {
+        let installed = ppocr_offered();
+        for (language, wants) in [("ja", true), ("ja-vert", true), ("zh", true), ("en", false), ("ko", false), ("fr", false)] {
+            let settings = OcrSettings { engine: EngineChoice::Auto, language: language.into(), ..Default::default() };
+            assert_eq!(auto_reads_with_ppocr(&settings), wants && installed, "{language}");
+        }
+        let named = OcrSettings { engine: EngineChoice::Windows, language: "ja".into(), ..Default::default() };
+        assert!(!auto_reads_with_ppocr(&named), "a named engine is never replaced");
+        let ja = OcrSettings { engine: EngineChoice::Auto, language: "ja".into(), ..Default::default() };
+        match recognizers(&ja) {
+            Ok(r) if installed => {
+                assert_eq!(r.primary.id(), "ppocr");
+                assert!(r.secondary.is_none(), "PP-OCRv5 reads alone");
+            }
+            Ok(r) => assert_ne!(r.primary.id(), "ppocr", "no models, no PP-OCRv5"),
+            Err(e) => assert!(!installed, "{e}"),
+        }
+        if installed {
+            let codes: Vec<&str> = offered_languages(&ja).iter().map(|l| l.0).collect();
+            assert!(codes.contains(&"ja-vert") && codes.contains(&"zh"), "{codes:?}");
         }
     }
 

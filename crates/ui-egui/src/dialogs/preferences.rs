@@ -544,6 +544,16 @@ pub(crate) fn preferences_body(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tok
     });
     ui.add_space(12.0);
 
+    // Card 7: Text recognition, only where PP-OCRv5 can run (its models are optional and not
+    // in releases, so a release shows no GPU setting for an engine it does not offer).
+    if pdfcraft_engine::ocr::ppocr_offered() {
+        let title7 = tl!("Text recognition");
+        preference_card(ui, t, title7, Some("scan-text"), &mut ctx, |ui, ctx| {
+            card_text_recognition(ui, app, t, ctx);
+        });
+        ui.add_space(12.0);
+    }
+
     if ctx.first_match_scrolled {
         ui.data_mut(|d| d.insert_temp(last_scrolled_id, query.clone()));
     } else if query.trim().is_empty() {
@@ -817,6 +827,26 @@ fn card_javascript(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ctx: &m
         ),
         t,
     );
+}
+
+/// Content for Card 7: Text recognition
+fn card_text_recognition(ui: &mut egui::Ui, app: &mut PdfCraftApp, t: &Tokens, ctx: &mut PrefSearchContext) {
+    ctx.checkbox(ui, &mut app.ocr_draft.gpu, tl!("Use the GPU to speed up PP-OCRv5"), t);
+    match pdfcraft_engine::ocr::gpu_backend() {
+        Some(name) => {
+            ctx.label_secondary(
+                ui,
+                &crate::i18n::fmt(
+                    tl!("Reads on {gpu}. If the GPU fails, reading continues on the CPU and PdfCraft tells you once."),
+                    &[("gpu", &name)],
+                ),
+                t,
+            );
+        }
+        None => {
+            ctx.label_secondary(ui, tl!("No GPU is available to PdfCraft on this computer, so PP-OCRv5 reads on the CPU."), t);
+        }
+    }
 }
 
 /// Preferences dialog buttons: OK on the right. Returns true to close.

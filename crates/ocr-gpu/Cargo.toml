@@ -15,5 +15,17 @@ pdfcraft-ocr = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 # The device the app already draws with (eframe's wgpu, the same version; nothing new in the
-# tree). No features of its own: the program's eframe decides the backends.
-wgpu = { version = "30.0.1", default-features = false }
+# tree). The backends are the program's eframe's; WGSL is what egui-wgpu enables too.
+wgpu = { version = "30.0.1", default-features = false, features = ["std", "wgsl"] }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# The tests make their own device (any adapter, software ones included), with the backends
+# egui-wgpu enables by default; naga (wgpu's shader compiler) validates every kernel without a
+# device. Both are already in the tree at these versions.
+wgpu = { version = "30.0.1" }
+naga = { version = "30.0.1", features = ["wgsl-in"] }
+# `examples/ocr_bench_gpu.rs` includes pdfcraft-ocr's benchmark, which draws its pages with these
+# (the same versions pdfcraft-ocr uses).
+skrifa = "0.44"
+png = "0.18"
+serde_json = { workspace = true }

@@ -729,7 +729,7 @@ fn configure_gpu(native: &mut eframe::NativeOptions) {
     let device_descriptor = std::sync::Arc::clone(&setup.device_descriptor);
     setup.device_descriptor = std::sync::Arc::new(move |adapter| {
         let mut descriptor = device_descriptor(adapter);
-        descriptor.required_limits = surface_texture_limits(descriptor.required_limits, &adapter.limits());
+        descriptor.required_limits = ocr_buffer_limits(surface_texture_limits(descriptor.required_limits, &adapter.limits()), &adapter.limits());
         descriptor
     });
     if std::env::var_os("WGPU_POWER_PREF").is_none() {
@@ -778,6 +778,18 @@ fn dx12_presentation(asked: Option<eframe::wgpu::Dx12SwapchainKind>) -> eframe::
 fn surface_texture_limits(mut required: eframe::wgpu::Limits, supported: &eframe::wgpu::Limits) -> eframe::wgpu::Limits {
     required = required.or_worse_values_from(supported);
     required.max_texture_dimension_2d = supported.max_texture_dimension_2d;
+    required
+}
+
+/// PP-OCRv5 on the GPU (`pdfcraft_ocr_gpu`) computes on this device. Its largest buffer, the
+/// detector's 64-channel map at half the page's size, is 164 MB for a 1600-pixel square page:
+/// above the 128 MiB a device binds by default, so such pages would fall back to the CPU. Ask
+/// for the adapter's own buffer limits, up to 1 GiB; a request within the adapter's limits
+/// never fails the device, and drawing uses none of it.
+fn ocr_buffer_limits(mut required: eframe::wgpu::Limits, supported: &eframe::wgpu::Limits) -> eframe::wgpu::Limits {
+    const CAP: u64 = 1 << 30;
+    required.max_storage_buffer_binding_size = required.max_storage_buffer_binding_size.max(supported.max_storage_buffer_binding_size.min(CAP));
+    required.max_buffer_size = required.max_buffer_size.max(supported.max_buffer_size.min(CAP));
     required
 }
 

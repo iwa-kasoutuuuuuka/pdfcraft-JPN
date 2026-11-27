@@ -707,3 +707,18 @@ fn text_extract_html_has_one_budget_across_pages() {
     assert_eq!(capped["pages"][1]["html"], "", "no HTML after the budget ran out: {capped}");
     assert_eq!(capped["pages"][1]["styles_incomplete"], true);
 }
+
+/// OCR tools ask for the GPU only in an automation made `with_gpu` (`pdfcraft-cli --gpu`), the
+/// Japanese tools included; without it nothing about the GPU is added to a result.
+#[test]
+fn ocr_tools_ask_for_the_gpu_only_with_gpu() {
+    let none = serde_json::json!({});
+    let cpu = Automation::new();
+    assert!(!cpu.ocr_settings(&Args(&none)).unwrap().gpu, "the CPU unless asked");
+    assert!(!cpu.japanese_ocr_settings(&Args(&none)).unwrap().gpu);
+    let gpu = Automation::new().with_gpu(true);
+    assert!(gpu.ocr_settings(&Args(&none)).unwrap().gpu);
+    assert!(gpu.japanese_ocr_settings(&Args(&none)).unwrap().gpu);
+    let out = serde_json::json!({ "pages": 1 });
+    assert_eq!(cpu.with_gpu_notice(out.clone()), out);
+}

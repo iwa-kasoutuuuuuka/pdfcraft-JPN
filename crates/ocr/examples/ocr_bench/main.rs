@@ -571,16 +571,21 @@ fn score(truth: &[String], reading: &str) -> Score {
 
 // ------------------------------------------------------------------- driver
 
-struct Args {
-    engines: Vec<String>,
-    lang: String,
-    out: PathBuf,
-    images: Option<PathBuf>,
-    fonts: PathBuf,
-    models: Option<PathBuf>,
-    det_side: usize,
-    quick: bool,
+/// The command line. Another crate's example can include this file (`#[path]`) and add
+/// engines with [`run_with`] (pdfcraft-ocr-gpu's `ocr_bench_gpu` adds `ppocrv5-wgpu`).
+pub struct Args {
+    pub engines: Vec<String>,
+    pub lang: String,
+    pub out: PathBuf,
+    pub images: Option<PathBuf>,
+    pub fonts: PathBuf,
+    pub models: Option<PathBuf>,
+    pub det_side: usize,
+    pub quick: bool,
 }
+
+/// An engine another crate adds by name: `None` when the name is not one of its own.
+pub type Extra<'a> = &'a dyn Fn(&str, &Args) -> Option<Box<dyn Recognizer>>;
 
 fn parse_args() -> Res<Args> {
     let mut a = Args {
@@ -611,7 +616,10 @@ fn parse_args() -> Res<Args> {
     Ok(a)
 }
 
-fn find_engine(name: &str, args: &Args) -> Option<Box<dyn Recognizer>> {
+fn find_engine(name: &str, args: &Args, extra: Extra<'_>) -> Option<Box<dyn Recognizer>> {
+    if let Some(e) = extra(name, args) {
+        return Some(e);
+    }
     match name {
         "ppocrv5" => load_ppocr(args, ppocr::Runtime::Rten, "rten"),
         #[cfg(feature = "ort-cuda")]
@@ -700,13 +708,20 @@ fn build_cases(args: &Args) -> Res<Vec<Case>> {
     Ok(cases)
 }
 
+#[allow(dead_code)]
 fn main() -> Res<()> {
+    run_with(&|_, _| None)
+}
+
+/// The benchmark, with the engines `extra` adds.
+pub fn run_with(extra: Extra<'_>) -> Res<()> {
     let args = parse_args()?;
     if !args.fonts.join("fonts/manifest.txt").exists() {
         println!("ocr-bench: skipped — no craft-fonts checkout at {} (set CRAFT_FONTS_DIR)", args.fonts.display());
         return Ok(());
     }
-    let engines: Vec<(String, Box<dyn Recognizer>)> = args.engines.iter().filter_map(|n| find_engine(n, &args).map(|e| (n.clone(), e))).collect();
+    let engines: Vec<(String, Box<dyn Recognizer>)> =
+        args.engines.iter().filter_map(|n| find_engine(n, &args, extra).map(|e| (n.clone(), e))).collect();
     for n in &args.engines {
         if !engines.iter().any(|(m, _)| m == n) {
             println!("ocr-bench: engine `{n}` is not available here; skipped");

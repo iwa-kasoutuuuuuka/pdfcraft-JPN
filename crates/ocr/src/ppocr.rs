@@ -84,6 +84,29 @@ const MAX_FILE_BYTES: u64 = 512 * 1024 * 1024;
 /// checks the shape against the values; implementations need not be trusted to.
 pub trait Network: Send + Sync {
     fn run(&self, shape: [usize; 4], data: Vec<f32>) -> Result<(Vec<usize>, Vec<f32>), OcrError>;
+
+    /// The output's shape and, for each row along its last axis, the best class and its value
+    /// (the first largest). Greedy CTC needs nothing more, so a GPU can reduce where the
+    /// probabilities are and send back two numbers a row instead of 18,385. The default runs
+    /// [`Network::run`] and reduces with [`best_of`].
+    fn run_best(&self, shape: [usize; 4], data: Vec<f32>) -> Result<(Vec<usize>, Vec<Best>), OcrError> {
+        let (shape, data) = self.run(shape, data)?;
+        let best = best_of(&shape, &data)?;
+        Ok((shape, best))
+    }
+}
+
+/// A row's best class and its value.
+pub type Best = (usize, f32);
+
+/// The first largest value of each row along the last axis of `shape`.
+pub fn best_of(shape: &[usize], data: &[f32]) -> Result<Vec<Best>, OcrError> {
+    let classes = shape.last().copied().filter(|&c| c > 0).ok_or_else(|| recognize(format!("output shape {shape:?} has no classes")))?;
+    let n = shape.iter().try_fold(1usize, |a, &d| a.checked_mul(d));
+    if n != Some(data.len()) {
+        return Err(recognize(format!("output shape {shape:?} does not hold its {} values", data.len())));
+    }
+    Ok(data.chunks(classes).map(|row| row.iter().enumerate().fold((0usize, f32::MIN), |a, (i, &p)| if p > a.1 { (i, p) } else { a })).collect())
 }
 
 /// Makes the two networks on another device (a GPU), from the model files' bytes (already
@@ -158,6 +181,23 @@ fn sane(out: (Vec<usize>, Vec<f32>)) -> Result<(Vec<usize>, Vec<f32>), OcrError>
     Ok(out)
 }
 
+/// A best-per-row output that matches its shape, names classes that exist and holds only
+/// finite values.
+fn sane_best(out: (Vec<usize>, Vec<Best>)) -> Result<(Vec<usize>, Vec<Best>), OcrError> {
+    let (lead, classes) = match out.0.split_last() {
+        Some((c, lead)) if *c > 0 => (lead, *c),
+        _ => return Err(recognize(format!("output shape {:?} has no classes", out.0))),
+    };
+    let rows = lead.iter().try_fold(1usize, |a, &d| a.checked_mul(d));
+    if rows != Some(out.1.len()) {
+        return Err(recognize(format!("output shape {:?} does not hold its {} rows", out.0, out.1.len())));
+    }
+    if out.1.iter().any(|&(c, p)| c >= classes || !p.is_finite()) {
+        return Err(recognize("output has classes outside the model or values that are not finite"));
+    }
+    Ok(out)
+}
+
 /// A fixed input for the self-check: a smooth pattern in -1..1.
 fn probe(shape: [usize; 4]) -> Vec<f32> {
     let n = shape.iter().product::<usize>();
@@ -177,6 +217,30 @@ fn self_check(cpu: &dyn Network, gpu: &dyn Network, shape: [usize; 4]) -> Result
         return Err(format!("its results differ from the CPU's by up to {worst}"));
     }
     Ok(())
+}
+
+/// The recogniser's self-check: the GPU's best class per row must be one the CPU scores within
+/// [`SELF_CHECK_TOLERANCE`] of its own best (a near tie may go either way), with that score.
+fn self_check_best(cpu: &dyn Network, gpu: &dyn Network, shape: [usize; 4]) -> Result<(), String> {
+    let want = cpu.run(shape, probe(shape)).and_then(sane).map_err(|e| format!("the CPU check failed: {e}"))?;
+    let got = gpu.run_best(shape, probe(shape)).and_then(sane_best).map_err(|e| e.to_string())?;
+    if got.0 != want.0 {
+        return Err(format!("its output shape {:?} differs from the CPU's {:?}", got.0, want.0));
+    }
+    let classes = want.0.last().copied().unwrap_or(1).max(1);
+    for (row, &(c, p)) in want.1.chunks(classes).zip(&got.1) {
+        let best = row.iter().copied().fold(f32::MIN, f32::max);
+        let at = row.get(c).copied().unwrap_or(f32::MIN);
+        if best - at > SELF_CHECK_TOLERANCE || (p - best).abs() > SELF_CHECK_TOLERANCE {
+            return Err(format!("its best classes differ from the CPU's (class {c} at {p}, the CPU's best {best})"));
+        }
+    }
+    Ok(())
+}
+
+/// A network run by rten on the CPU, from ONNX bytes (for comparing other runtimes with).
+pub fn cpu_network(model: Vec<u8>) -> Result<Box<dyn Network>, OcrError> {
+    Ok(Box::new(Rten(rten::Model::load(model).map_err(|e| OcrError::Load("rten".into(), e.to_string()))?)))
 }
 
 /// rten on the CPU.
@@ -384,7 +448,7 @@ impl PpOcr {
     /// says why on every page.
     pub fn with_gpu(mut self, det: Box<dyn Network>, rec: Box<dyn Network>, name: String) -> PpOcr {
         let checked = self_check(self.det.as_ref(), det.as_ref(), [1, 3, 64, 64])
-            .and_then(|()| self_check(self.rec.as_ref(), rec.as_ref(), [1, 3, REC_HEIGHT, REC_BUCKET]));
+            .and_then(|()| self_check_best(self.rec.as_ref(), rec.as_ref(), [1, 3, REC_HEIGHT, REC_BUCKET]));
         match checked {
             Ok(()) => {
                 self.gpu = Some(Gpu { det, rec, name, healthy: AtomicBool::new(true), failed: Mutex::new(None) });
@@ -412,9 +476,10 @@ impl PpOcr {
         }
     }
 
-    /// Run one network: on the GPU while it works (an error, or an output that is not sane,
-    /// gives it up for the session, with a note), else on the CPU.
-    fn run(&self, net: Net, shape: [usize; 4], data: Vec<f32>, notes: &mut Vec<String>) -> Result<(Vec<usize>, Vec<f32>), OcrError> {
+    /// Run one network with `f`: on the GPU while it works (an error, or an output that is not
+    /// sane, gives it up for the session, with a note), else on the CPU. `f` is told whether
+    /// it runs on the GPU (whose outputs it checks).
+    fn exec<T>(&self, net: Net, notes: &mut Vec<String>, f: impl Fn(&dyn Network, bool) -> Result<T, OcrError>) -> Result<T, OcrError> {
         let cpu = match net {
             Net::Det => self.det.as_ref(),
             Net::Rec => self.rec.as_ref(),
@@ -424,7 +489,7 @@ impl PpOcr {
                 Net::Det => gpu.det.as_ref(),
                 Net::Rec => gpu.rec.as_ref(),
             };
-            match on_gpu.run(shape, data.clone()).and_then(sane) {
+            match f(on_gpu, true) {
                 Ok(out) => return Ok(out),
                 Err(e) => {
                     let why = format!("the GPU ({}) failed: {e}; this page and the rest of the session are read on the CPU", gpu.name);
@@ -435,7 +500,7 @@ impl PpOcr {
                 }
             }
         }
-        cpu.run(shape, data)
+        f(cpu, false)
     }
 
     /// [`PpOcr::read`], with the page's notes: why the GPU is not used (every page), or that it
@@ -526,7 +591,11 @@ impl PpOcr {
                 }
             }
         }
-        let (shape, data) = self.run(Net::Det, [1, 3, dh, dw], input, notes)?;
+        let shape4 = [1, 3, dh, dw];
+        let (shape, data) = self.exec(Net::Det, notes, |n, gpu| {
+            let out = n.run(shape4, input.clone())?;
+            if gpu { sane(out) } else { Ok(out) }
+        })?;
         let (ph, pw) = match shape.as_slice() {
             [1, 1, ph, pw] if *ph > 0 && *pw > 0 && ph.checked_mul(*pw) == Some(data.len()) => (*ph, *pw),
             other => return Err(recognize(format!("unexpected detection output shape {other:?} for {} values", data.len()))),
@@ -560,18 +629,21 @@ impl PpOcr {
                         }
                     }
                 }
-                let (shape, data) = self.run(Net::Rec, [n, 3, REC_HEIGHT, bw], input, notes)?;
+                let shape4 = [n, 3, REC_HEIGHT, bw];
+                let (shape, best) = self.exec(Net::Rec, notes, |net, gpu| {
+                    let out = net.run_best(shape4, input.clone())?;
+                    if gpu { sane_best(out) } else { Ok(out) }
+                })?;
                 let (steps, classes) = match shape.as_slice() {
-                    [b, t, c] if *b == n && *t > 0 && *c > 0 && b.checked_mul(*t).and_then(|bt| bt.checked_mul(*c)) == Some(data.len()) => (*t, *c),
-                    other => return Err(recognize(format!("unexpected recognition output shape {other:?} for {} values", data.len()))),
+                    [b, t, c] if *b == n && *t > 0 && *c > 0 && b.checked_mul(*t) == Some(best.len()) => (*t, *c),
+                    other => return Err(recognize(format!("unexpected recognition output shape {other:?} for {} rows", best.len()))),
                 };
                 for (slot, &k) in batch.iter().enumerate() {
-                    let seq = data
-                        .get(slot * steps * classes..(slot + 1) * steps * classes)
-                        .ok_or_else(|| recognize("the recognition output is shorter than its shape"))?;
+                    let seq =
+                        best.get(slot * steps..(slot + 1) * steps).ok_or_else(|| recognize("the recognition output is shorter than its shape"))?;
                     let rw = lines.get(k).map_or(bw, |l| l.rw);
                     if let Some(o) = out.get_mut(k) {
-                        *o = decode(&self.dict, seq, steps, classes, bw as f32 / steps as f32, rw as f32)?;
+                        *o = decode(&self.dict, seq, classes, bw as f32 / steps as f32, rw as f32)?;
                     }
                 }
             }
@@ -787,11 +859,11 @@ pub fn boxes_from_map(map: &[f32], pw: usize, ph: usize, w: usize, h: usize) -> 
     boxes
 }
 
-/// Greedy CTC over one line's `steps × classes` probabilities. `step_px` is the input width
+/// Greedy CTC over one line's best class per time step (of `classes`). `step_px` is the input width
 /// one time step covers; positions are clamped to the line's `rw` real pixels (the rest is
 /// padding). A character runs from its first step to the next character's first step (the
 /// last one to the end of its own steps).
-pub fn decode(dict: &[String], data: &[f32], steps: usize, classes: usize, step_px: f32, rw: f32) -> Result<Vec<ReadChar>, OcrError> {
+pub fn decode(dict: &[String], best: &[Best], classes: usize, step_px: f32, rw: f32) -> Result<Vec<ReadChar>, OcrError> {
     // Classes: blank, the dictionary, then (when the model has one more) a space.
     let space = dict.len() + 1;
     if classes != space && classes != space + 1 {
@@ -800,9 +872,10 @@ pub fn decode(dict: &[String], data: &[f32], steps: usize, classes: usize, step_
     let mut out: Vec<ReadChar> = Vec::new();
     let mut last = 0usize;
     let mut last_end = 0.0f32;
-    for t in 0..steps {
-        let row = data.get(t * classes..(t + 1) * classes).ok_or_else(|| recognize("the recognition output is shorter than its shape"))?;
-        let (best, p) = row.iter().enumerate().fold((0usize, f32::MIN), |a, (i, &p)| if p > a.1 { (i, p) } else { a });
+    for (t, &(best, p)) in best.iter().enumerate() {
+        if best >= classes {
+            return Err(recognize(format!("class {best} of {classes}")));
+        }
         let at = (t as f32 * step_px).min(rw);
         if best != 0 && best != last {
             let text = if best == space { " ".to_string() } else { dict.get(best - 1).cloned().unwrap_or_default() };
@@ -965,17 +1038,21 @@ mod tests {
         for (t, &c) in seq.iter().enumerate() {
             data[t * classes + c] = 0.9;
         }
-        let read = decode(&dict, &data, seq.len(), classes, 8.0, 64.0).unwrap();
+        let best = best_of(&[seq.len(), classes], &data).unwrap();
+        let read = decode(&dict, &best, classes, 8.0, 64.0).unwrap();
         let text: String = read.iter().map(|c| c.text.as_str()).collect();
         assert_eq!(text, "日本A ");
         assert_eq!((read[0].start, read[0].end), (0.0, 24.0), "日 runs to where 本 starts");
         assert_eq!((read[2].start, read[2].end), (40.0, 56.0));
         // A class count the dictionary does not explain is an error.
-        assert!(decode(&dict, &data, seq.len(), 7, 8.0, 64.0).is_err());
-        // An output shorter than its shape is an error, not a panic.
-        assert!(decode(&dict, &data[..10], seq.len(), classes, 8.0, 64.0).is_err());
+        assert!(decode(&dict, &best, 7, 8.0, 64.0).is_err());
+        // An output shorter than its shape, or a class beyond the model's, is an error, not a panic.
+        assert!(best_of(&[seq.len(), classes], &data[..10]).is_err());
+        assert!(best_of(&[seq.len(), 0], &[]).is_err());
+        assert!(decode(&dict, &[(9, 0.5)], classes, 8.0, 64.0).is_err());
         // NaN probabilities never panic.
-        assert!(decode(&dict, &[f32::NAN; 40], 8, 5, 8.0, 64.0).is_ok());
+        let nan = best_of(&[8, 5], &[f32::NAN; 40]).unwrap();
+        assert!(decode(&dict, &nan, 5, 8.0, 64.0).is_ok());
     }
 
     #[test]

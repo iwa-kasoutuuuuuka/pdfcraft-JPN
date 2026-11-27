@@ -393,6 +393,14 @@ impl PdfCraftApp {
                     _ => return Err("secured-notice must be true or false".into()),
                 };
             }
+            // Preferences ▸ Text recognition ▸ Use the GPU to speed up PP-OCRv5.
+            ("ocr-gpu", _) => {
+                self.ocr_draft.gpu = match value {
+                    "true" => true,
+                    "false" => false,
+                    _ => return Err("ocr-gpu must be true or false".into()),
+                };
+            }
             ("system-title-bar", _) => {
                 self.system_title_bar = match value {
                     "true" => true,
