@@ -5,9 +5,9 @@
 - 画面はすべて日本語(未翻訳 0 件)
 - 日本語を PDF に**書き込める**(横書き・**縦書き**・**ルビ**・**縦中横**)
 - **右綴じ**の見開き表示
-- **和暦**の日付
-- 日本語 OCR(**Windows 標準 OCR** / Tesseract、縦書き対応)
-- **電子印鑑**(名前印・データ印、和暦対応)
+- **和暦**の日付と、文書の中の日付の **和暦/西暦の一括変換**
+- 日本語 OCR(**Windows 標準 OCR** / Tesseract、縦書き対応。モデルを入れれば高精度の **PP-OCRv5** も使えます)
+- **電子印鑑**(名前印・データ印、和暦対応)・ページの境目に押す**契印**・**ビジネス用スタンプ**(承認・社外秘など)
 - **原稿用紙・便箋**の縦書き文書を本文から作成
 - **表記ゆれを無視した検索**(全角/半角・ひらがな/カタカナ・旧字体)
 - **個人情報の自動検出と墨消し**(マイナンバー・電話番号・郵便番号・メール)
@@ -189,7 +189,8 @@ cargo build --release -p pdfcraft -p pdfcraft-cli
   - 日本語を含まない文字列には何もしません。
 - 複数ページは**最大 4 ページを同時に**読み取ります(結果のページ順は変わりません)。途中で中止すると、読み取り中のページが終わった時点で止まります。同時に読む数を変えたいときは、環境変数 `PDFCRAFT_OCR_THREADS` に 1〜4 の数を入れます(1 で 1 ページずつ。パソコンのメモリが少ないときに向いています)。
 - 認識できる言語は Windows の言語設定に入っている OCR 用の言語だけです。日本語が無い場合は **設定 ▸ 時刻と言語 ▸ 言語と地域** で日本語を追加します。
-- **PP-OCRv5** は、モデルを入れた環境でだけエンジンの一覧に出ます。読める言語は日本語(横書き・縦書き)、中国語、英語です。手元の比較では、実際のカタログ 40 ページで文字の誤り率(中央値)が Windows OCR の約 9% に対して約 4% でした([docs/ocr-ppocr.ja.md](docs/ocr-ppocr.ja.md))。最初の 1 回はモデルの読み込みに数秒かかります。「自動」エンジンではまだ使いません。
+- **PP-OCRv5** は、モデルを入れた環境でだけエンジンの一覧に出ます。読める言語は日本語(横書き・縦書き)、中国語、英語です。手元の比較では、実際のカタログ 40 ページで文字の誤り率(中央値)が Windows OCR の約 9% に対して約 4% でした([docs/ocr-ppocr.ja.md](docs/ocr-ppocr.ja.md))。最初の 1 回はモデルの読み込みに数秒かかります。「自動」エンジンではまだ使いません。AI エージェントからは `engine: "ppocr"` で選べ、`ocr_status` でモデルが入っているかを確かめられます。
+- **GPU について**: PP-OCRv5 を GPU で動かすための土台(差し替え口と、そのためのクレート `pdfcraft-ocr-gpu`)だけが入っています。GPU 用の計算部分はまだ無いので、**GPU を使う設定にしても CPU で読み取り**、その理由を各ページの注記に残します。設定画面のスイッチや `--gpu` のオプションもまだありません(内部の設定 `OcrSettings::gpu` の初期値はオフです)。現時点では GPU で速くなりません。
 
 ## 7. 電子印鑑
 
@@ -409,6 +410,7 @@ pdfcraft-cli run --script steps.json --root .  # 複数の手順をまとめて�
 - `page_add_text` / `content_update` の `vertical` で縦書きを指定します。
 - `ocr_recognize` の `engine: "windows"` と `language: "ja"` で日本語 OCR を実行します。
 - 既定で `auto_preprocess`(ページごとの傾き補正)と `fix_japanese`(似た文字の訂正)がオンです。元の読み取りのまま使いたいときは、`ocr_recognize` などの引数で `false` にします。`deskew` か `auto_rotate` を指定し `auto_preprocess` を指定しない呼び出しでは、`auto_preprocess` はオフになり、指定したとおりに処理します(`deskew: false` なら傾いたページもそのまま読みます)。
+- `ocr_recognize` などの `engine` には `"ppocr"` も指定できます(モデルが入っているときだけ)。
 - 複数ページの OCR は自動で並列に読み取ります(最大 4 ページ)。`PDFCRAFT_OCR_THREADS=1` を付けて `pdfcraft-cli` を起動すると 1 ページずつになります。
 
 ## 16. 配布パッケージと自動更新
@@ -447,6 +449,7 @@ pwsh packaging/windows/package.ps1 -Arch x64
 - ルビが親文字より長い場合は、はみ出して描かれます(自動で詰めません)。
 - 縦中横は 1〜2 桁の数字と `!!` `!?` `?!` だけが対象です。
 - 縦書きのテキスト(テキストを追加・原稿用紙)は 1 列が 1 つの文字のまとまりとして取り出されます。個人情報の墨消しでは、見つかった箇所を含む**列全体**に印が付きます。
+- PP-OCRv5 は「自動」エンジンの対象外で、モデルも配布版に入っていません。GPU での実行はまだできません(上の 6 章を参照)。
 - 印鑑の文字はゴシック体だけです(篆書体などの印章用の書体はありません)。
 - フォルダー一括 OCR と Word の縦書き出力は、実際のスキャン文書と Word では確認していません(テストは合成した PDF で行っています)。
 - macOS 用のアイコン(.icns)は Windows で作ったもので、macOS 上では確認していません。
@@ -468,6 +471,8 @@ pwsh packaging/windows/package.ps1 -Arch x64
 | 原稿用紙・便箋 | `crates/edit/src/added/vertical_doc.rs`、`crates/ui-egui/src/workflows/vertical_ui.rs` |
 | 縦書きのまま入力 | `crates/edit/src/added/vertical_edit.rs`、`crates/ui-egui/src/tools/content_ui/vertical_input.rs` |
 | 表記ゆれ検索 | `crates/render/src/text/japanese.rs` |
+| OCR の GPU 土台(カーネル未実装) | `crates/ocr-gpu/`(`pdfcraft-ocr-gpu`)、`crates/ocr/src/ppocr.rs`(`NetworkFactory`)、`crates/engine/src/ocr.rs`(`register_gpu`・`OcrSettings::gpu`)。設計は [docs/ocr-ppocr.ja.md](docs/ocr-ppocr.ja.md) |
+| OCR の計測 | `cargo xtask ocr-bench`(`crates/ocr/examples/ocr_bench/`)。craft-fonts のフォントで合成した日本語のスキャンページを各エンジンに読ませ、文字の誤り率(CER)・行の再現率・1 秒あたりのページ数を出す。結果の JSON は `target/ocr-bench/report.json`。計測用で、配布物には入らない |
 | 個人情報の検出 | `crates/engine/src/pii_ja.rs` |
 | テキスト書き出し・フォルダー一括 OCR | `crates/engine/src/text_export.rs`・`ocr_folder.rs`、`crates/export/src/text_docx.rs` |
 
