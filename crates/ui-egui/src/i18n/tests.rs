@@ -428,8 +428,15 @@ fn history_labels_keep_captured_names() {
     needs_catalogs!();
     set_current(JA());
     assert_eq!(action_label("Insert pages from Save {e}.pdf"), "Save {e}.pdf からページを挿入");
-    // pdfcraft-JPN: the catalog has both "Undo {action}" and "Redo {action}", so the template is used.
-    assert_eq!(command_label("Undo Insert pages from Save {e}.pdf"), "元に戻す: Save {e}.pdf からページを挿入");
+    // The whole-phrase templates are used only when the catalog has both "Undo {action}" and
+    // "Redo {action}" (this repository's `i18n/` does; the craft-i18n checkout that CI embeds
+    // does not for Japanese). Otherwise the translated verb goes before the action.
+    let expected = if has(JA(), "Undo {action}") && has(JA(), "Redo {action}") {
+        "元に戻す: Save {e}.pdf からページを挿入"
+    } else {
+        "取り消し Save {e}.pdf からページを挿入"
+    };
+    assert_eq!(command_label("Undo Insert pages from Save {e}.pdf"), expected);
     assert_eq!(action_label("Untranslated custom action"), "Untranslated custom action");
     assert_eq!(menu_label("file.open", "Open…"), "開く…");
     set_current(Lang::EN);
