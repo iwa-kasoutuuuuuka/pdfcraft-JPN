@@ -57,6 +57,9 @@ pub struct OcrDraft {
     /// Batch: where the searchable copies go (None: ask each time). Remembered from the last
     /// batch's folder pick, so a repeated export into the same place does not re-ask.
     pub output_folder: Option<String>,
+    /// Preferences ▸ Text recognition: run PP-OCRv5 on the GPU, the CPU being the fallback.
+    /// Off until the user turns it on (the owner's decision).
+    pub gpu: bool,
 }
 
 impl Default for OcrDraft {
@@ -82,6 +85,7 @@ impl Default for OcrDraft {
             skip_text_pages: true,
             force_ocr: false,
             output_folder: None,
+            gpu: false,
         }
     }
 }
@@ -104,6 +108,7 @@ impl OcrDraft {
             skip_text_files: self.skip_text_files,
             skip_text_pages: self.skip_text_pages && !self.text_pages,
             force_ocr: self.force_ocr,
+            gpu: self.gpu,
             ..Default::default()
         }
     }
@@ -144,9 +149,12 @@ impl OcrDraft {
                 *flag = on;
             }
         }
-        for (key, flag) in
-            [("skip_text_files", &mut self.skip_text_files), ("skip_text_pages", &mut self.skip_text_pages), ("force_ocr", &mut self.force_ocr)]
-        {
+        for (key, flag) in [
+            ("skip_text_files", &mut self.skip_text_files),
+            ("skip_text_pages", &mut self.skip_text_pages),
+            ("force_ocr", &mut self.force_ocr),
+            ("gpu", &mut self.gpu),
+        ] {
             if let Some(on) = v[key].as_bool() {
                 *flag = on;
             }
@@ -177,6 +185,7 @@ impl OcrDraft {
             "skip_text_pages": self.skip_text_pages,
             "force_ocr": self.force_ocr,
             "output_folder": self.output_folder,
+            "gpu": self.gpu,
         })
     }
 }
@@ -877,8 +886,25 @@ impl PdfCraftApp {
         }
     }
 
+    /// Say once a session that OCR moved from the GPU to the CPU, when the toast is free (a
+    /// run's own message may be showing). The reason is the engine's, in its own words.
+    pub(crate) fn poll_gpu_notice(&mut self) {
+        if self.gpu_notice.is_none() {
+            self.gpu_notice = pdfcraft_engine::ocr::take_gpu_fallback_notice();
+        }
+        if self.toast.is_none()
+            && let Some(why) = self.gpu_notice.take()
+        {
+            self.notify(crate::i18n::fmt(
+                tl!("Text recognition moved from the GPU to the CPU for the rest of this session: {why}"),
+                &[("why", &why)],
+            ));
+        }
+    }
+
     /// Show progress; apply the result once the worker is done.
     pub(crate) fn poll_ocr(&mut self) {
+        self.poll_gpu_notice();
         self.poll_ocr_folder();
         #[cfg(target_arch = "wasm32")]
         self.pump_web_ocr();
@@ -1441,6 +1467,35 @@ mod tests {
         e.output_folder = Some("kept".into());
         e.apply_pref(&serde_json::json!({ "output_folder": "" }));
         assert_eq!(e.output_folder.as_deref(), Some("kept"), "an empty value is not a folder");
+    }
+
+    /// Preferences ▸ Text recognition ▸ GPU: off by default, restored and saved with the other
+    /// OCR settings, and carried into every job's settings. Once a session, the first time OCR
+    /// moves to the CPU, the toast says so, waiting for a run's own message to be read.
+    #[test]
+    fn the_gpu_choice_is_remembered_and_reaches_the_jobs() {
+        let d = OcrDraft::default();
+        assert!(!d.gpu && !d.settings().gpu, "the GPU is off until the user turns it on");
+        let mut on = OcrDraft::default();
+        on.apply_pref(&serde_json::json!({ "gpu": true }));
+        assert!(on.gpu && on.settings().gpu);
+        assert_eq!(on.to_pref()["gpu"], serde_json::json!(true));
+        let mut kept = OcrDraft { gpu: true, ..Default::default() };
+        kept.apply_pref(&serde_json::json!({ "gpu": "yes" }));
+        assert!(kept.gpu, "a malformed value keeps the setting");
+        let mut app = PdfCraftApp::new();
+        app.set_option("ocr-gpu", "true").expect("a boolean");
+        assert!(app.ocr_draft.gpu);
+        assert!(app.set_option("ocr-gpu", "maybe").is_err());
+        app.toast = Some(("the run finished".into(), 0.0));
+        app.gpu_notice = Some("the self-check failed".into());
+        app.poll_gpu_notice();
+        assert_eq!(app.toast.as_ref().map(|t| t.0.as_str()), Some("the run finished"), "the run's message is not replaced");
+        app.toast = None;
+        app.poll_gpu_notice();
+        let toast = app.toast.clone().map(|t| t.0).unwrap_or_default();
+        assert!(toast.contains("CPU") && toast.contains("the self-check failed"), "{toast}");
+        assert!(app.gpu_notice.is_none());
     }
 
     /// "Automatic" saved without a strategy reads the way Automatic reads by default (the

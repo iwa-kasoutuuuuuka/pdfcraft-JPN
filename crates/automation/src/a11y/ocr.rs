@@ -7,7 +7,7 @@ impl Automation {
     /// fallback: a tool run must not quietly do something other than what it was asked.
     pub(crate) fn ocr_settings(&self, a: &Args) -> Result<pdfcraft_engine::ocr::OcrSettings> {
         use pdfcraft_engine::ocr::{EngineChoice, MergeStrategy, OutputMode};
-        let mut settings = pdfcraft_engine::ocr::OcrSettings::default();
+        let mut settings = pdfcraft_engine::ocr::OcrSettings { gpu: self.gpu, ..Default::default() };
         if let Some(d) = a.opt_num("dpi")? {
             settings.dpi = d.clamp(72.0, 600.0) as f32;
         }

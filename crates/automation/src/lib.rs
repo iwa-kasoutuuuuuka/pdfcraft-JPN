@@ -108,6 +108,9 @@ pub struct Automation {
     next_ocr_review: u64,
     /// What object_copy copied, for object_paste into any open document.
     objects_clipboard: Option<pdfcraft_engine::ObjectClipboard>,
+    /// OCR jobs run PP-OCRv5 on the registered GPU backend (`pdfcraft-cli --gpu`); off by
+    /// default, by the owner's decision.
+    gpu: bool,
 }
 
 impl Default for Automation {
@@ -129,7 +132,16 @@ impl Automation {
             ocr_reviews: HashMap::new(),
             next_ocr_review: 0,
             objects_clipboard: None,
+            gpu: false,
         }
+    }
+
+    /// Run PP-OCRv5 on the GPU backend the program registered
+    /// (`pdfcraft_engine::ocr::register_gpu`), the CPU staying the fallback. Without a
+    /// registered backend every page's notes say it read on the CPU, and why.
+    pub fn with_gpu(mut self, on: bool) -> Self {
+        self.gpu = on;
+        self
     }
 
     /// Confine every path the tools read or write to `root` (relative paths resolve inside it).

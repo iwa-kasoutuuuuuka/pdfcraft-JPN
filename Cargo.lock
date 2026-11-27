@@ -4413,12 +4413,14 @@ dependencies = [
  "pdfcraft-automation",
  "pdfcraft-cos",
  "pdfcraft-engine",
+ "pdfcraft-ocr-gpu",
  "pdfcraft-platform",
  "pdfcraft-preflight",
  "pdfcraft-render",
  "png 0.18.1",
  "rustix 1.1.6",
  "serde_json",
+ "wgpu",
  "winresource",
 ]
 

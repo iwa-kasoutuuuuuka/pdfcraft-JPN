@@ -81,6 +81,21 @@ fn block_on<F: std::future::Future>(device: &wgpu::Device, fut: F) -> Result<F::
     }
 }
 
+/// Resolve a future that needs no device to poll (requesting an adapter or a device: the
+/// native backends answer at once), giving up after [`SUBMIT_TIMEOUT`].
+pub(crate) fn block_on_idle<F: std::future::Future>(fut: F) -> Option<F::Output> {
+    let mut fut = std::pin::pin!(fut);
+    let mut cx = Context::from_waker(Waker::noop());
+    let start = Instant::now();
+    while start.elapsed() < SUBMIT_TIMEOUT {
+        if let Poll::Ready(v) = fut.as_mut().poll(&mut cx) {
+            return Some(v);
+        }
+        std::thread::yield_now();
+    }
+    None
+}
+
 /// Validation and out-of-memory errors of `f`'s device calls, as this call's error.
 fn scoped<T>(device: &wgpu::Device, f: impl FnOnce() -> Result<T, OcrError>) -> Result<T, OcrError> {
     let oom = device.push_error_scope(wgpu::ErrorFilter::OutOfMemory);

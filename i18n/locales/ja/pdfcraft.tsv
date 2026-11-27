@@ -4783,3 +4783,8 @@ calendar weekday	We	水
 	This line of page text can't be rewritten in place	このページの行はその場で書き換えられません
 	The rewritten line would not read back as the converted text	書き換えた行が変換後の文字として読み取れません
 	The converted date is longer than the field allows	変換後の日付がフィールドの最大文字数を超えます
+	Text recognition	文字認識
+	Use the GPU to speed up PP-OCRv5	GPU で PP-OCRv5 を高速化する
+	Reads on {gpu}. If the GPU fails, reading continues on the CPU and PdfCraft tells you once.	{gpu} で読み取ります。GPU で失敗したときは CPU で読み続け、そのことを 1 回だけお知らせします。
+	No GPU is available to PdfCraft on this computer, so PP-OCRv5 reads on the CPU.	このコンピューターでは PdfCraft が使える GPU がないため、PP-OCRv5 は CPU で読み取ります。
+	Text recognition moved from the GPU to the CPU for the rest of this session: {why}	このセッションの残りは、文字認識を GPU から CPU に切り替えました: {why}

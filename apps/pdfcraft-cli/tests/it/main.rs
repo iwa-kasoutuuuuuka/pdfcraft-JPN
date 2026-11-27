@@ -7,6 +7,7 @@ mod batch_exit;
 mod check;
 mod edit;
 mod extract;
+mod gpu;
 mod help;
 mod info_repairs;
 mod info_standards;

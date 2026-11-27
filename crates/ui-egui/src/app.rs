@@ -176,6 +176,7 @@ impl PdfCraftApp {
             pinned_tools: Vec::new(),
             pin_tool_search: String::new(),
             toast: None,
+            gpu_notice: None,
             toast_script: None,
             script_messages: std::collections::VecDeque::new(),
             script_messages_dropped: 0,

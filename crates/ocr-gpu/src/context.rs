@@ -31,6 +31,46 @@ impl GpuContext {
         Ok(GpuContext { device, queue, adapter })
     }
 
+    /// A device of its own, for a program that draws nothing (`pdfcraft-cli --gpu`): the
+    /// high-performance adapter, with buffers of up to 1 GiB where it allows them (the
+    /// detector at its largest side needs more than the default 128 MiB). A software adapter,
+    /// or none, is an error naming why; the caller then reads on the CPU.
+    pub fn headless() -> Result<GpuContext, OcrError> {
+        let load = |why: String| OcrError::Load("wgpu".into(), why);
+        // `Instance::new` panics when the program enabled no backend (the crate leaves them to
+        // the program: the app gets eframe's, the CLI its own).
+        if wgpu::Instance::enabled_backend_features().is_empty() {
+            return Err(load("this program was built without a graphics backend".into()));
+        }
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
+        let adapter = crate::exec::block_on_idle(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            force_fallback_adapter: false,
+            compatible_surface: None,
+            apply_limit_buckets: false,
+        }))
+        .ok_or_else(|| load("the graphics driver did not answer".into()))?
+        .map_err(|e| load(format!("no graphics adapter: {e}")))?;
+        let info = adapter.get_info();
+        let a = adapter.limits();
+        let limits = wgpu::Limits {
+            max_storage_buffer_binding_size: a.max_storage_buffer_binding_size.min(1 << 30),
+            max_buffer_size: a.max_buffer_size.min(1 << 30),
+            ..wgpu::Limits::default()
+        };
+        let (device, queue) = crate::exec::block_on_idle(adapter.request_device(&wgpu::DeviceDescriptor {
+            label: Some("pdfcraft-ocr"),
+            required_features: wgpu::Features::empty(),
+            required_limits: limits,
+            experimental_features: wgpu::ExperimentalFeatures::disabled(),
+            memory_hints: wgpu::MemoryHints::Performance,
+            trace: wgpu::Trace::Off,
+        }))
+        .ok_or_else(|| load("the graphics driver did not answer".into()))?
+        .map_err(|e| load(format!("{}: {e}", info.name)))?;
+        GpuContext::shared(device, queue, info)
+    }
+
     /// The adapter's name and backend, as notes show it.
     pub fn describe(&self) -> String {
         format!("wgpu on {} ({:?})", self.adapter.name, self.adapter.backend)

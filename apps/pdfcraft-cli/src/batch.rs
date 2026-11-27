@@ -15,6 +15,7 @@ const OPTIONS: &[OptionSpec] = &[
     OptionSpec { name: "--dpi", takes_value: true },
     OptionSpec { name: "--language", takes_value: true },
     OptionSpec { name: "--ocr-all-pages", takes_value: false },
+    OptionSpec { name: "--gpu", takes_value: false },
 ];
 
 pub(super) fn run(args: &[String]) -> Result<(), CliError> {
