@@ -3144,7 +3144,7 @@ licence = "Apache-2.0"
 licence_url = "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/dab3fe35379033fdcb2d0e9572fac0b36c9a9ebf/LICENSE"
 licence_sha256 = "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e"
 kind = "model"
-usage = "Under evaluation: finds text lines for the PP-OCRv5 probe in cargo xtask ocr-bench (cargo xtask models --optional); not shipped"
+usage = "PP-OCRv5 engine (ppocr): finds text lines, where installed with cargo xtask models --optional; not shipped in releases until the P4 decision (docs/ocr-ppocr.ja.md)"
 sha256 = "10803475a591f7dc623e24670fb5752ec94d39a1f8cf069aac1b6f0ce19cfc85"
 optional = true
 
@@ -3158,7 +3158,7 @@ licence = "Apache-2.0"
 licence_url = "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/dab3fe35379033fdcb2d0e9572fac0b36c9a9ebf/LICENSE"
 licence_sha256 = "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e"
 kind = "model"
-usage = "Under evaluation: reads the lines the PP-OCRv5 probe finds in cargo xtask ocr-bench (cargo xtask models --optional); not shipped"
+usage = "PP-OCRv5 engine (ppocr): reads the lines it finds, where installed with cargo xtask models --optional; not shipped in releases until the P4 decision (docs/ocr-ppocr.ja.md)"
 sha256 = "d9dc333c9c7b042c6dffb8e33d72b6f65c9c1d463d0a3c2f78174fea55e94752"
 optional = true
 
@@ -3172,7 +3172,7 @@ licence = "Apache-2.0"
 licence_url = "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/dab3fe35379033fdcb2d0e9572fac0b36c9a9ebf/LICENSE"
 licence_sha256 = "3840c5c0c61c294264d2dd77b8777be6ddd90121ef4e0e64abcd22edea581d6e"
 kind = "model"
-usage = "Under evaluation: the character list (character_dict) the PP-OCRv5 probe decodes with in cargo xtask ocr-bench (cargo xtask models --optional); not shipped"
+usage = "PP-OCRv5 engine (ppocr): the character list (character_dict) it decodes with, where installed with cargo xtask models --optional; not shipped in releases until the P4 decision (docs/ocr-ppocr.ja.md)"
 sha256 = "2c719dba044c4e2228aef8ff92f5f575394d75d24c16de096a33b7cfd902f66d"
 optional = true
 

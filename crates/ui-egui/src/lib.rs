@@ -510,6 +510,10 @@ pub struct PdfCraftApp {
     /// Search query for the Pin a tool selection dialog.
     pub pin_tool_search: String,
     pub toast: Option<(String, f64)>,
+    /// Why OCR moved from the GPU to the CPU, waiting for the toast to be free: said once a
+    /// session (`pdfcraft_engine::ocr::take_gpu_fallback_notice`), so it must not be replaced
+    /// by the run's own message in the same frame.
+    pub gpu_notice: Option<String>,
     /// The form script message the toast shows now, if it shows one: drawn with its title and
     /// icon (#4293).
     pub toast_script: Option<pdfcraft_engine::js::Message>,

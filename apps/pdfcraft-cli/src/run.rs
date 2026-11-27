@@ -8,10 +8,31 @@ use super::{CliError, stdout_line};
 // ---- automation --------------------------------------------------------------------------------
 
 pub(crate) fn automation(args: &[String]) -> Result<pdfcraft_automation::Automation, String> {
-    let a = pdfcraft_automation::Automation::new();
+    let gpu = args.iter().any(|a| a == "--gpu");
+    if gpu {
+        enable_gpu();
+    }
+    let a = pdfcraft_automation::Automation::new().with_gpu(gpu);
     match flag(args, "--root") {
         Some(root) => a.with_root(root).map_err(|e| format!("--root {root}: {e}")),
         None => Ok(a),
+    }
+}
+
+/// `--gpu`: a GPU device of this process's own, registered for PP-OCRv5. Without one (no
+/// adapter, a software one, a driver that does not answer) OCR reads on the CPU: stderr says
+/// why now, and every page's notes say it again.
+fn enable_gpu() {
+    use std::io::Write as _;
+    let mut err = std::io::stderr().lock();
+    match pdfcraft_ocr_gpu::GpuContext::headless() {
+        Ok(context) => {
+            let _ = writeln!(err, "pdfcraft-cli: OCR uses the GPU ({}) for PP-OCRv5", context.describe());
+            pdfcraft_engine::ocr::register_gpu(std::sync::Arc::new(pdfcraft_ocr_gpu::WgpuFactory::new(context)));
+        }
+        Err(e) => {
+            let _ = writeln!(err, "pdfcraft-cli: --gpu: {e}; OCR reads on the CPU");
+        }
     }
 }
 

@@ -23,10 +23,14 @@ pub struct Limits {
     pub values: usize,
 }
 
+/// Weight values a model may hold, read ([`Limits::values`]) or worked out at preparation
+/// (`ir::prepare`): 1 GB of f32.
+pub const MAX_VALUES: usize = 1 << 28;
+
 impl Default for Limits {
     /// Well above PP-OCRv5's (about 2,000 nodes and 45 M weights each).
     fn default() -> Limits {
-        Limits { nodes: 100_000, tensors: 100_000, attributes_per_node: 64, names_per_node: 256, dims: 8, values: 1 << 28 }
+        Limits { nodes: 100_000, tensors: 100_000, attributes_per_node: 64, names_per_node: 256, dims: 8, values: MAX_VALUES }
     }
 }
 

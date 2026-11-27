@@ -4413,12 +4413,14 @@ dependencies = [
  "pdfcraft-automation",
  "pdfcraft-cos",
  "pdfcraft-engine",
+ "pdfcraft-ocr-gpu",
  "pdfcraft-platform",
  "pdfcraft-preflight",
  "pdfcraft-render",
  "png 0.18.1",
  "rustix 1.1.6",
  "serde_json",
+ "wgpu",
  "winresource",
 ]
 
@@ -4642,7 +4644,11 @@ dependencies = [
 name = "pdfcraft-ocr-gpu"
 version = "0.18.1"
 dependencies = [
+ "naga",
  "pdfcraft-ocr",
+ "png 0.18.1",
+ "serde_json",
+ "skrifa 0.44.0",
  "wgpu",
 ]
 

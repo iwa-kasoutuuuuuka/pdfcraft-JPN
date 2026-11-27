@@ -21,6 +21,11 @@ pdfcraft-cos = { workspace = true }
 pdfcraft-preflight = { workspace = true }
 pdfcraft-automation = { workspace = true }
 pdfcraft-platform = { workspace = true }
+# `--gpu`: PP-OCRv5 on a GPU of its own (off unless asked for; the app shares its drawing device).
+pdfcraft-ocr-gpu = { workspace = true }
+# The graphics backends (Vulkan, DX12, Metal, GL) for `--gpu`: pdfcraft-ocr-gpu leaves them to the
+# program, and the CLI has no eframe to bring them. Already in Cargo.lock through the app.
+wgpu = "30.0.1"
 base64 = "0.23"
 
 [dev-dependencies]
