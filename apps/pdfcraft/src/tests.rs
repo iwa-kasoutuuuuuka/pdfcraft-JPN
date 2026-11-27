@@ -242,6 +242,26 @@ fn surface_limits_preserve_other_requirements_and_never_overrequest() {
 }
 
 #[test]
+fn ocr_buffers_get_what_the_adapter_binds_up_to_a_gibibyte() {
+    let required = eframe::wgpu::Limits::default();
+    for (binding, buffer) in [(4u64 << 30, 8u64 << 30), (512 << 20, 768 << 20), (128 << 20, 256 << 20)] {
+        let supported = eframe::wgpu::Limits { max_storage_buffer_binding_size: binding, max_buffer_size: buffer, ..required.clone() };
+        let enabled = super::ocr_buffer_limits(required.clone(), &supported);
+        assert_eq!(enabled.max_storage_buffer_binding_size, binding.min(1 << 30));
+        assert_eq!(enabled.max_buffer_size, buffer.min(1 << 30));
+        assert!(enabled.check_limits(&supported), "unsupported device limits: {enabled:?}");
+        assert_eq!(
+            eframe::wgpu::Limits {
+                max_storage_buffer_binding_size: required.max_storage_buffer_binding_size,
+                max_buffer_size: required.max_buffer_size,
+                ..enabled
+            },
+            required
+        );
+    }
+}
+
+#[test]
 fn surface_limits_fit_v3d_shader_variable_limit() {
     // Issue #2383: V3D supports 15 variables, below the default request of 16.
     let required = eframe::wgpu::Limits::default();
